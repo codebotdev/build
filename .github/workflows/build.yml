@@ -32,6 +32,24 @@ jobs:
       - name: Checkout build project
         uses: actions/checkout@v6
 
+      - name: Check private source token
+        env:
+          SOURCE_REPO_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+        run: |
+          if [ -z "$SOURCE_REPO_TOKEN" ]; then
+            echo 'Set SOURCE_REPO_TOKEN with read access to codebotdev/jdcloud_ax3000' >&2
+            exit 1
+          fi
+
+      - name: Checkout private firmware source
+        uses: actions/checkout@v6
+        with:
+          repository: codebotdev/jdcloud_ax3000
+          ref: ${{ inputs.source_branch }}
+          path: immortalwrt
+          token: ${{ secrets.SOURCE_REPO_TOKEN }}
+          persist-credentials: false
+
       - name: Prepare runner
         run: |
           if command -v docker >/dev/null 2>&1; then
@@ -50,10 +68,8 @@ jobs:
           df -hT
           free -h
 
-      - name: Fetch firmware source and extra packages
+      - name: Fetch extra packages
         run: |
-          git clone --depth 1 --single-branch --branch "$SOURCE_BRANCH" \
-            "$SOURCE_REPO" immortalwrt
           git clone --depth 1 --single-branch --branch main \
             --recurse-submodules --shallow-submodules \
             "$EXTRA_REPO" immortalwrt/package/extra-packages
