@@ -1,0 +1,101 @@
+name: Build JDCloud AX3000 firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: Firmware source branch
+        required: true
+        default: v25.12.2-12.5
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jdcloud-ax3000-${{ inputs.source_branch }}
+  cancel-in-progress: false
+
+env:
+  TZ: Asia/Shanghai
+  SOURCE_BRANCH: ${{ inputs.source_branch }}
+  SOURCE_REPO: https://github.com/codebotdev/jdcloud_ax3000.git
+  EXTRA_REPO: https://github.com/codebotdev/extra-packages.git
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout build project
+        uses: actions/checkout@v6
+
+      - name: Prepare runner
+        run: |
+          if command -v docker >/dev/null 2>&1; then
+            sudo docker image prune --all --force || true
+          fi
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/powershell
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses-dev libssl-dev python3 python3-setuptools \
+            python3-pyelftools rsync swig unzip zlib1g-dev file wget curl \
+            ca-certificates subversion help2man xsltproc libelf-dev \
+            libtool autoconf automake cmake ninja-build pkgconf zstd
+          sudo apt-get clean
+          command -v gh
+          df -hT
+          free -h
+
+      - name: Fetch firmware source and extra packages
+        run: |
+          git clone --depth 1 --single-branch --branch "$SOURCE_BRANCH" \
+            "$SOURCE_REPO" immortalwrt
+          git clone --depth 1 --single-branch --branch main \
+            --recurse-submodules --shallow-submodules \
+            "$EXTRA_REPO" immortalwrt/package/extra-packages
+          if [ ! -e immortalwrt/scripts/apply-nss-feed-patches.sh ]; then
+            ln -s apply-feed-patches.sh immortalwrt/scripts/apply-nss-feed-patches.sh
+          fi
+          if grep -Eq '^CONFIG_IB(_STANDALONE)?=y$' \
+            immortalwrt/jdc-nss.config \
+            immortalwrt/package/extra-packages/kmod.config \
+            immortalwrt/package/extra-packages/full.config; then
+            echo 'ImageBuilder must be disabled for this workflow' >&2
+            exit 1
+          fi
+          echo "SOURCE_SHA=$(git -C immortalwrt rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "EXTRA_SHA=$(git -C immortalwrt/package/extra-packages rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Build full firmware
+        working-directory: immortalwrt
+        run: ./package/extra-packages/build.sh full
+
+      - name: Publish firmware release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          image_dir=immortalwrt/bin/targets/qualcommax/ipq50xx
+          shopt -s nullglob
+          factory=("$image_dir"/*jdcloud_ax3000*factory.bin)
+          sysupgrade=("$image_dir"/*jdcloud_ax3000*sysupgrade.bin)
+          if (( ${#factory[@]} == 0 || ${#sysupgrade[@]} == 0 )); then
+            echo 'JDCloud AX3000 factory or sysupgrade firmware is missing' >&2
+            exit 1
+          fi
+          images=("${factory[@]}" "${sysupgrade[@]}")
+          branch_tag=$(printf '%s' "$SOURCE_BRANCH" | sed 's/[^A-Za-z0-9._-]/-/g')
+          tag="immortalwrt-jdcloud_ax3000-${branch_tag}-$(date +%F)"
+          notes="Firmware source: ${SOURCE_REPO}@${SOURCE_SHA}; extra packages: ${EXTRA_REPO}@${EXTRA_SHA}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${images[@]}" --clobber
+            gh release edit "$tag" --notes "$notes"
+          else
+            gh release create "$tag" "${images[@]}" \
+              --target "$GITHUB_SHA" --title "$tag" --notes "$notes"
+          fi
