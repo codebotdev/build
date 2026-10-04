@@ -42,13 +42,20 @@ jobs:
             gettext git libncurses-dev libssl-dev python3 python3-setuptools \
             python3-pyelftools rsync swig unzip zlib1g-dev file wget curl \
             ca-certificates subversion help2man xsltproc libelf-dev \
-            libtool autoconf automake cmake ninja-build pkgconf zstd awscli
+            libtool autoconf automake cmake ninja-build pkgconf zstd
           sudo apt-get clean
+          if ! command -v aws >/dev/null 2>&1; then
+            curl -sS "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip -q awscliv2.zip
+            sudo ./aws/install --update
+            rm -rf aws awscliv2.zip
+          fi
           sudo mkdir -p /build /upload
           sudo chown -R "$USER:$USER" /build /upload
           ln -sfn /build "$GITHUB_WORKSPACE/build"
           command -v gh
           command -v aws
+          aws --version
           df -hT
           free -h
 
