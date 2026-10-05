@@ -52,7 +52,8 @@ cleanup_tmp_files() {
         "${MODULE_CANDIDATES:-}" \
         "${AVAILABLE_PACKAGES:-}" \
         "${FULL_EXTRA_PACKAGES:-}" \
-        "${INVALID_MODULES:-}"
+        "${INVALID_MODULES:-}" \
+        "${I18N_CANDIDATES:-}"
     do
         if [[ -n "$f" && -f "$f" ]]; then
             rm -f "$f"
@@ -432,6 +433,7 @@ MODULE_CANDIDATES="$(mktemp)"
 AVAILABLE_PACKAGES="$(mktemp)"
 FULL_EXTRA_PACKAGES="$(mktemp)"
 INVALID_MODULES="$(mktemp)"
+I18N_CANDIDATES="$(mktemp)"
 
 sed -n \
     's/^CONFIG_PACKAGE_\(.*\)=m$/\1/p' \
@@ -463,6 +465,19 @@ if [[ -s "$INVALID_MODULES" ]]; then
     cat "$INVALID_MODULES"
 fi
 
+# Auto-include corresponding luci-i18n-*-zh-cn for enabled LuCI applications
+sed -n 's/^luci-\(app\|theme\|proto\)-\(.*\)/luci-i18n-\2-zh-cn/p' \
+    "$FULL_EXTRA_PACKAGES" \
+    | sort -u \
+    > "$I18N_CANDIDATES"
+
+comm -12 \
+    "$I18N_CANDIDATES" \
+    "$AVAILABLE_PACKAGES" \
+    >> "$FULL_EXTRA_PACKAGES"
+
+sort -u "$FULL_EXTRA_PACKAGES" -o "$FULL_EXTRA_PACKAGES"
+
 cat \
     "$MINI_PACKAGES" \
     "$FULL_EXTRA_PACKAGES" \
@@ -476,12 +491,14 @@ rm -f \
     "$MODULE_CANDIDATES" \
     "$AVAILABLE_PACKAGES" \
     "$FULL_EXTRA_PACKAGES" \
-    "$INVALID_MODULES"
+    "$INVALID_MODULES" \
+    "$I18N_CANDIDATES"
 
 MODULE_CANDIDATES=""
 AVAILABLE_PACKAGES=""
 FULL_EXTRA_PACKAGES=""
 INVALID_MODULES=""
+I18N_CANDIDATES=""
 
 # ============================================================
 # 14. Package summary
