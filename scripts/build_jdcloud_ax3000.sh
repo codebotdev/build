@@ -104,7 +104,7 @@ fi
 [[ -d "$IMMORTALWRT_DIR" ]] || \
     die "ImmortalWrt directory not found: $IMMORTALWRT_DIR"
 
-IMMORTALWRT_DIR="$(cd "$IMMORTALWRT_DIR" && pwd)"
+export IMMORTALWRT_DIR="$(cd "$IMMORTALWRT_DIR" && pwd)"
 
 mkdir -p "$IMAGEBUILDER_DIR"
 IMAGEBUILDER_DIR="$(cd "$IMAGEBUILDER_DIR" && pwd)"
