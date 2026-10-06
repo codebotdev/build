@@ -68,6 +68,15 @@ jobs:
           token: ${{ secrets.JDCLOUD_AX3000_TOKEN }}
           persist-credentials: false
 
+      - name: Setup APK signing key
+        env:
+          BUILD_PRIVATE_KEY: ${{ secrets.BUILD_PRIVATE_KEY }}
+        run: |
+          if [ -n "$BUILD_PRIVATE_KEY" ]; then
+            printf '%s\n' "$BUILD_PRIVATE_KEY" | tr -d '\r' > /build/source/private-key.pem
+            chmod 600 /build/source/private-key.pem
+          fi
+
       - name: Build firmware
         run: |
           chmod +x ./scripts/build_jdcloud_ax3000.sh
