@@ -19,15 +19,15 @@
       "files": [
         {
           "name": "readme-test.manifest",
-          "url": "https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/readme-test.manifest"
+          "url": "https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564196033-1/readme-test.manifest"
         },
         {
           "name": "readme-test.txt",
-          "url": "https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/readme-test.txt"
+          "url": "https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564196033-1/readme-test.txt"
         },
         {
           "name": "sha256sums",
-          "url": "https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/sha256sums"
+          "url": "https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564196033-1/sha256sums"
         }
       ]
     }

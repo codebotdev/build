@@ -15,8 +15,8 @@
 
 | 文件名 | 下载链接 |
 | --- | --- |
-| readme-test.manifest | [下载](<https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/readme-test.manifest>) |
-| readme-test.txt | [下载](<https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/readme-test.txt>) |
+| readme-test.manifest | [下载](<https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564196033-1/readme-test.manifest>) |
+| readme-test.txt | [下载](<https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564196033-1/readme-test.txt>) |
 
 ## 维护与扩展
 
