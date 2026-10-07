@@ -5,7 +5,18 @@
 
 > 本文件由 `projects.json` 自动生成，请修改 JSON 中的项目名称和介绍后重新生成。
 
-暂无已发布的下载文件。
+## README 发布链路测试
+
+用于验证 Release、JSON 和 README 自动更新。附件仅为测试数据，不是可刷机固件。
+
+项目：`readme_test`  
+源码分支：codex/readme-downloads-test  
+源码提交：7897a7c81dcf1b4ace37c813b85a611be079997f
+
+| 文件名 | 下载链接 |
+| --- | --- |
+| readme-test.manifest | [下载](<https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/readme-test.manifest>) |
+| readme-test.txt | [下载](<https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/readme-test.txt>) |
 
 ## 维护与扩展
 

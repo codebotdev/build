@@ -3,14 +3,33 @@
     "jdcloud_ax3000": {
       "name": "京东云 AX3000",
       "description": "基于 ImmortalWrt 编译，提供 MINI、FULL 固件、软件包清单及独立 ImageBuilder。",
-      "build": {"branch": "", "commit": ""},
+      "build": {
+        "branch": "",
+        "commit": ""
+      },
       "files": []
     },
     "readme_test": {
       "name": "README 发布链路测试",
       "description": "用于验证 Release、JSON 和 README 自动更新。附件仅为测试数据，不是可刷机固件。",
-      "build": {"branch": "", "commit": ""},
-      "files": []
+      "build": {
+        "branch": "codex/readme-downloads-test",
+        "commit": "7897a7c81dcf1b4ace37c813b85a611be079997f"
+      },
+      "files": [
+        {
+          "name": "readme-test.manifest",
+          "url": "https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/readme-test.manifest"
+        },
+        {
+          "name": "readme-test.txt",
+          "url": "https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/readme-test.txt"
+        },
+        {
+          "name": "sha256sums",
+          "url": "https://github.com/codebotdev/build/releases/download/readme_test-codex-readme-downloads-test-37564178872-1/sha256sums"
+        }
+      ]
     }
   }
 }
