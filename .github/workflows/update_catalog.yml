@@ -1,0 +1,40 @@
+name: Update download catalog
+on:
+  workflow_call:
+    inputs:
+      project:
+        required: true
+        type: string
+      source_branch:
+        required: true
+        type: string
+      source_commit:
+        required: true
+        type: string
+      release_tag:
+        required: true
+        type: string
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: download-catalog-${{ github.ref_name }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PROJECT: ${{ inputs.project }}
+      SOURCE_BRANCH: ${{ inputs.source_branch }}
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      CATALOG_BRANCH: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Update JSON and README from published assets
+        run: python3 scripts/release_catalog.py update --project "$PROJECT" --branch "$SOURCE_BRANCH" --commit "$SOURCE_COMMIT" --tag "$RELEASE_TAG"
+      - name: Commit catalog to the triggering branch
+        run: bash scripts/commit_catalog.sh

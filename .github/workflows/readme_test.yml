@@ -1,0 +1,43 @@
+name: Test Release download catalog
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/readme-downloads-test]
+    paths:
+      - scripts/**
+      - .github/workflows/**
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check catalog behavior
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Prepare test upload
+        run: |
+          sudo mkdir -p /upload
+          sudo chown "$USER:$USER" /upload
+          python3 scripts/create_test_upload.py
+      - name: Publish test release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PROJECT: readme_test
+          SOURCE_BRANCH: ${{ github.ref_name }}
+          SOURCE_DIR: ${{ github.workspace }}
+          TEST_RELEASE: 'true'
+        run: bash scripts/publish_release.sh
+  catalog:
+    needs: publish
+    uses: ./.github/workflows/update_catalog.yml
+    with:
+      project: readme_test
+      source_branch: ${{ github.ref_name }}
+      source_commit: ${{ needs.publish.outputs.commit }}
+      release_tag: ${{ needs.publish.outputs.tag }}

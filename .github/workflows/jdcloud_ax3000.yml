@@ -21,6 +21,9 @@ env:
 
 jobs:
   build:
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     defaults:
@@ -94,33 +97,19 @@ jobs:
           ./scripts/upload_jdcloud_ax3000.sh
 
       - name: Publish firmware release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
+          PROJECT: jdcloud_ax3000
+          SOURCE_DIR: /build/source
+        run: bash scripts/publish_release.sh
 
-          upload_files=(/upload/*)
-          if (( ${#upload_files[@]} == 0 )); then
-            echo 'Error: No files found in /upload to upload' >&2
-            exit 1
-          fi
-
-          echo "Files to upload to Release:"
-          ls -lh "${upload_files[@]}"
-
-          branch_tag=$(printf '%s' "$SOURCE_BRANCH" | sed 's/[^A-Za-z0-9._-]/-/g')
-          tag="jdcloud_ax3000-${branch_tag}-$(date +%F)"
-          source_sha=$(git -C /build/source rev-parse --short HEAD 2>/dev/null || echo "unknown")
-          notes="ImmortalWrt JDCloud AX3000 firmware (${SOURCE_BRANCH}@${source_sha}) built on $(date +'%Y-%m-%d %H:%M:%S')"
-
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag exists. Uploading files with clobber..."
-            gh release upload "$tag" "${upload_files[@]}" --clobber
-            gh release edit "$tag" --notes "$notes"
-          else
-            echo "Creating new release $tag..."
-            gh release create "$tag" "${upload_files[@]}" \
-              --target "$GITHUB_SHA" --title "$tag" --notes "$notes"
-          fi
+  catalog:
+    needs: build
+    uses: ./.github/workflows/update_catalog.yml
+    with:
+      project: jdcloud_ax3000
+      source_branch: ${{ inputs.source_branch }}
+      source_commit: ${{ needs.build.outputs.commit }}
+      release_tag: ${{ needs.build.outputs.tag }}
