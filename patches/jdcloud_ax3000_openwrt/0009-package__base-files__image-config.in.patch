@@ -1,5 +1,5 @@
 diff --git a/package/base-files/image-config.in b/package/base-files/image-config.in
-index 24149345b9394b28b1443c66ada8d86023c36af7..ee1ece7990a6316379a969c07c304575a2f06a04 100644
+index 24149345b9394b28b1443c66ada8d86023c36af7..cff28f16756a124ad4446ea1dd9419ba6eefd5b9 100644
 --- a/package/base-files/image-config.in
 +++ b/package/base-files/image-config.in
 @@ -198,7 +198,7 @@ if VERSIONOPT
@@ -7,7 +7,7 @@ index 24149345b9394b28b1443c66ada8d86023c36af7..ee1ece7990a6316379a969c07c304575
  		string
  		prompt "Release repository"
 -		default "https://downloads.openwrt.org/snapshots"
-+		default "https://mirrors.vsean.net/openwrt/snapshots"
++		default "https://mirrors.kamino.eu.org/openwrt/snapshots"
  		help
  			This is the repository address embedded in the image, it defaults
  			to the trunk snapshot repo; the url may contain the following placeholders:

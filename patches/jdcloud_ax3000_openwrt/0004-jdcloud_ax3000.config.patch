@@ -1,9 +1,9 @@
 diff --git a/jdcloud_ax3000.config b/jdcloud_ax3000.config
 new file mode 100644
-index 0000000000000000000000000000000000000000..151d12e6bbfa134a788fc2d85435c2f453740071
+index 0000000000000000000000000000000000000000..880be4b3b81462b53d8db7a98db24eb4d9d7b69f
 --- /dev/null
 +++ b/jdcloud_ax3000.config
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,119 @@
 +# JDCloud AX3000 / openwrt-nss-edma (stmmac + DSA NSS).
 +# Adapted from ../jdcloud_ax3000/jdcloud_ax3000.config.
 +# After updating and installing feeds, merge the optional modules first:
@@ -123,4 +123,3 @@ index 0000000000000000000000000000000000000000..151d12e6bbfa134a788fc2d85435c2f4
 +CONFIG_PACKAGE_wakeonlan=m
 +CONFIG_PACKAGE_luci-app-usteer=y
 +
-+CONFIG_PACKAGE_openwrt-keyring=y
