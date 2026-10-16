@@ -1,0 +1,81 @@
+Subject: [PATCH] net: keep medium skb heads out of the 4 KiB kmalloc cache
+
+The NSS empty-buffer pool uses alloc_skb() to avoid retaining shared page
+fragments. On IPQ5018 the ordinary 1984-byte buffer plus NET_SKB_PAD and
+skb_shared_info exceeds 2 KiB and kmalloc rounds it to 4 KiB. Thousands of
+long-held buffers make this a substantial persistent allocation overhead.
+
+Adapt the useful part of ImmortalWrt commits 3d4625023b and 8faaa85cd1:
+provide a 2100-byte data cache sized from actual alignment and shared info,
+without importing the old recycler or adding a second head alignment.
+On this arm64 configuration the object size is 2496 bytes. Preserve small
+heads, <= 2 KiB buckets, larger buffers, non-normal allocation flags and
+pfmemalloc retry behavior. Use the existing 6.18 slab-aware kfree path.
+
+---
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -121,6 +121,13 @@
+ #define SKB_SMALL_HEAD_HEADROOM						\
+ 	SKB_WITH_OVERHEAD(SKB_SMALL_HEAD_CACHE_SIZE)
+ 
++/* NSS holds thousands of ~2 KiB skb heads in its firmware buffer pool.
++ * Keep their aligned payload and shared info out of the 4 KiB kmalloc bucket.
++ * Match the old 2100-byte data cache without depending on recycler profiles.
++ */
++#define SKB_DATA_CACHE_SIZE_2100 SKB_HEAD_ALIGN(2100 + NET_SKB_PAD)
++static struct kmem_cache *skb_data_cache_2100 __ro_after_init;
++
+ /* kcm_write_msgs() relies on casting paged frags to bio_vec to use
+  * iov_iter_bvec(). These static asserts ensure the cast is valid is long as the
+  * netmem is a page.
+@@ -595,17 +602,26 @@
+ 	void *obj;
+ 
+ 	obj_size = SKB_HEAD_ALIGN(*size);
+-	if (obj_size <= SKB_SMALL_HEAD_CACHE_SIZE &&
++	if ((obj_size <= SKB_SMALL_HEAD_CACHE_SIZE ||
++	     (obj_size > SZ_2K && obj_size <= SKB_DATA_CACHE_SIZE_2100)) &&
+ 	    !(flags & KMALLOC_NOT_NORMAL_BITS)) {
+-		obj = kmem_cache_alloc_node(net_hotdata.skb_small_head_cache,
+-				flags | __GFP_NOMEMALLOC | __GFP_NOWARN,
+-				node);
+-		*size = SKB_SMALL_HEAD_CACHE_SIZE;
++		struct kmem_cache *cache;
++
++		if (obj_size <= SKB_SMALL_HEAD_CACHE_SIZE) {
++			cache = net_hotdata.skb_small_head_cache;
++			*size = SKB_SMALL_HEAD_CACHE_SIZE;
++		} else {
++			cache = skb_data_cache_2100;
++			*size = SKB_DATA_CACHE_SIZE_2100;
++		}
++		obj = kmem_cache_alloc_node(cache,
++					    flags | __GFP_NOMEMALLOC | __GFP_NOWARN,
++					    node);
+ 		if (obj || !(gfp_pfmemalloc_allowed(flags)))
+ 			goto out;
+ 		/* Try again but now we are using pfmemalloc reserves */
+ 		ret_pfmemalloc = true;
+-		obj = kmem_cache_alloc_node(net_hotdata.skb_small_head_cache, flags, node);
++		obj = kmem_cache_alloc_node(cache, flags, node);
+ 		goto out;
+ 	}
+ 
+@@ -5193,6 +5209,16 @@
+ 						0,
+ 						SKB_SMALL_HEAD_HEADROOM,
+ 						NULL);
++	/* Keep skb_shared_info outside the usercopy region, as for small heads.
++	 * Linux 6.18's skb_kfree_head() uses kfree(), which releases the object
++	 * through its owning slab cache without relying on skb_end_offset().
++	 */
++	skb_data_cache_2100 = kmem_cache_create_usercopy("skb_data_cache_2100",
++							 SKB_DATA_CACHE_SIZE_2100, 0,
++							 SLAB_HWCACHE_ALIGN | SLAB_PANIC |
++							 SLAB_NO_MERGE, 0,
++							 SKB_WITH_OVERHEAD(SKB_DATA_CACHE_SIZE_2100),
++							 NULL);
+ 	skb_extensions_init();
+ }
+ 

@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -211,6 +212,97 @@ class WorkflowTests(unittest.TestCase):
     def test_invalid_patch_set_fails(self):
         self.env['PATCHES_NAME'] = '../escape'
         self.run_script('apply-openwrt-patches.sh', success=False)
+
+
+class SourceCustomizationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.project = self.root / 'project'
+        self.source = self.root / 'source'
+        self.source.mkdir()
+        scripts = self.project / 'scripts'
+        scripts.mkdir(parents=True)
+        for name in ['openwrt-common.sh', 'apply-openwrt-patches.sh', 'apply-openwrt-overrides.sh']:
+            shutil.copy2(PROJECT / 'scripts' / name, scripts / name)
+        self.env = os.environ | {
+            'SOURCE_DIR': str(self.source), 'PATCHES_NAME': '', 'OVERRIDES_NAME': '',
+        }
+
+    def run_script(self, name, success=True):
+        result = subprocess.run(['bash', str(self.project / 'scripts' / name)],
+                                env=self.env, text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
+        if success:
+            self.assertEqual(result.returncode, 0, result.stdout)
+        else:
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+        return result
+
+    def test_overrides_merge_and_preserve_files(self):
+        overrides = self.project / 'overrides/demo'
+        (overrides / 'nested').mkdir(parents=True)
+        (self.source / 'nested').mkdir()
+        (self.source / 'nested/keep').write_text('keep existing file')
+        (self.source / 'jdcloud_ax3000.config').write_text('old config')
+        (overrides / 'jdcloud_ax3000.config').write_text('new config')
+        # Equal sizes and mtimes must still copy different content.
+        for path in [self.source / 'jdcloud_ax3000.config', overrides / 'jdcloud_ax3000.config']:
+            os.utime(path, (1_700_000_000, 1_700_000_000))
+        (overrides / 'nested/board.bin').write_bytes(bytes(range(256)))
+        (overrides / '.hidden').write_text('hidden config')
+        executable = overrides / 'nested/hook'
+        executable.write_text('#!/bin/sh\nexit 0\n')
+        executable.chmod(0o755)
+        self.env['OVERRIDES_NAME'] = 'demo'
+        self.run_script('apply-openwrt-overrides.sh')
+        self.assertEqual((self.source / 'jdcloud_ax3000.config').read_text(), 'new config')
+        self.assertEqual((self.source / 'nested/keep').read_text(), 'keep existing file')
+        self.assertEqual((self.source / 'nested/board.bin').read_bytes(), bytes(range(256)))
+        self.assertEqual((self.source / '.hidden').read_text(), 'hidden config')
+        self.assertEqual((self.source / 'nested/hook').stat().st_mode & 0o777, 0o755)
+
+    def test_overrides_can_be_used_without_patches(self):
+        overrides = self.project / 'overrides/demo'
+        overrides.mkdir(parents=True)
+        (overrides / 'new.config').write_text('new file')
+        self.env['OVERRIDES_NAME'] = 'demo'
+        self.run_script('apply-openwrt-patches.sh')
+        self.run_script('apply-openwrt-overrides.sh')
+        self.assertEqual((self.source / 'new.config').read_text(), 'new file')
+
+    def test_empty_overrides_input_skips_copy(self):
+        self.run_script('apply-openwrt-overrides.sh')
+        self.assertEqual(list(self.source.iterdir()), [])
+
+    def test_missing_overrides_folder_fails(self):
+        self.env['OVERRIDES_NAME'] = 'missing'
+        self.run_script('apply-openwrt-overrides.sh', success=False)
+
+    def test_invalid_overrides_name_fails(self):
+        for name in ['../escape', '/absolute', 'nested/folder']:
+            with self.subTest(name=name):
+                self.env['OVERRIDES_NAME'] = name
+                self.run_script('apply-openwrt-overrides.sh', success=False)
+
+    def test_overrides_apply_after_patches(self):
+        (self.source / 'existing.config').write_text('original\n')
+        patches = self.project / 'patches/demo'
+        patches.mkdir(parents=True)
+        (patches / '0001-config.patch').write_text(
+            'diff --git a/existing.config b/existing.config\n'
+            '--- a/existing.config\n+++ b/existing.config\n'
+            '@@ -1 +1 @@\n-original\n+patched\n')
+        overrides = self.project / 'overrides/demo'
+        overrides.mkdir(parents=True)
+        (overrides / 'existing.config').write_text('overridden\n')
+        subprocess.run(['git', 'init', '-q', str(self.source)], check=True)
+        self.env.update(PATCHES_NAME='demo', OVERRIDES_NAME='demo')
+        self.run_script('apply-openwrt-patches.sh')
+        self.assertEqual((self.source / 'existing.config').read_text(), 'patched\n')
+        self.run_script('apply-openwrt-overrides.sh')
+        self.assertEqual((self.source / 'existing.config').read_text(), 'overridden\n')
 
 
 if __name__ == '__main__':

@@ -18,8 +18,13 @@ on:
         required: false
         default: jdcloud_ax3000_openwrt
         type: string
+      overrides:
+        description: Folder under ./overrides (copied over source after patches; empty to skip)
+        required: false
+        default: jdcloud_ax3000_openwrt
+        type: string
       config:
-        description: Device config path in the patched source tree
+        description: Device config path in the prepared source tree
         required: true
         default: jdcloud_ax3000.config
         type: string
@@ -33,7 +38,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: openwrt-${{ inputs.source_repository }}-${{ inputs.source_branch }}-${{ inputs.patches }}-${{ inputs.config }}-${{ inputs.extra_config }}
+  group: openwrt-${{ inputs.source_repository }}-${{ inputs.source_branch }}-${{ inputs.patches }}-${{ inputs.overrides }}-${{ inputs.config }}-${{ inputs.extra_config }}
   cancel-in-progress: false
 
 env:
@@ -42,6 +47,7 @@ env:
   SOURCE_REPOSITORY: ${{ inputs.source_repository }}
   SOURCE_BRANCH: ${{ inputs.source_branch }}
   PATCHES_NAME: ${{ inputs.patches }}
+  OVERRIDES_NAME: ${{ inputs.overrides }}
   CONFIG_NAME: ${{ inputs.config }}
   EXTRA_CONFIG_NAME: ${{ inputs.extra_config }}
 
@@ -97,6 +103,9 @@ jobs:
       - name: Apply source patches
         run: bash ./scripts/apply-openwrt-patches.sh
 
+      - name: Copy source overrides
+        run: bash ./scripts/apply-openwrt-overrides.sh
+
       - name: Setup APK signing key
         env:
           BUILD_PRIVATE_KEY: ${{ secrets.BUILD_PRIVATE_KEY }}
@@ -132,13 +141,14 @@ jobs:
           (( ${#upload_files[@]} > 0 )) || { echo 'No release files found' >&2; exit 1; }
           branch_tag=$(printf '%s' "$SOURCE_BRANCH" | sed 's/[^A-Za-z0-9._-]/-/g' | cut -c1-60)
           # Separate repositories/configurations even when branch/device match.
-          build_id=$(printf '%s\n' "$SOURCE_REPOSITORY" "$SOURCE_BRANCH" "$PATCHES_NAME" "$CONFIG_NAME" "$EXTRA_CONFIG_NAME" | sha256sum | cut -c1-12)
+          build_id=$(printf '%s\n' "$SOURCE_REPOSITORY" "$SOURCE_BRANCH" "$PATCHES_NAME" "$OVERRIDES_NAME" "$CONFIG_NAME" "$EXTRA_CONFIG_NAME" | sha256sum | cut -c1-12)
           tag="${DISTRIBUTION}-${PROFILE}-${branch_tag}-${build_id}-$(date +%F)"
           source_sha=$(git -C "$SOURCE_DIR" rev-parse HEAD)
           notes=$(cat <<EOF
           $DISTRIBUTION $PROFILE firmware built on $(date +'%Y-%m-%d %H:%M:%S %Z')
           Source: $SOURCE_REPOSITORY ($SOURCE_BRANCH@$source_sha)
           Patches: ${PATCHES_NAME:-none}
+          Overrides: ${OVERRIDES_NAME:-none}
           Config: $CONFIG_NAME; extra config: ${EXTRA_CONFIG_NAME:-none}
           Build project: $GITHUB_SHA
           EOF
