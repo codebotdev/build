@@ -1,0 +1,29 @@
+diff --git a/target/linux/qualcommax/image/ipq50xx.mk b/target/linux/qualcommax/image/ipq50xx.mk
+index 799b6070e814f7b4a77b1e26363ee214ebd037ea..884167bc8807dfe432dec3036412497477d6cc28 100644
+--- a/target/linux/qualcommax/image/ipq50xx.mk
++++ b/target/linux/qualcommax/image/ipq50xx.mk
+@@ -215,6 +215,24 @@ define Device/iodata_wn-dax3000gr
+ endef
+ TARGET_DEVICES += iodata_wn-dax3000gr
+ 
++define Device/jdcloud_ax3000
++	$(call Device/FitImage)
++	$(call Device/EmmcImage)
++	DEVICE_VENDOR := JDCloud
++	DEVICE_MODEL := AX3000
++	DEVICE_DTS_CONFIG := config@mp03.5-c2
++	SUPPORTED_DEVICES += jdcloud,re-cs-03
++	SOC := ipq5018
++	BLOCKSIZE := 64k
++	KERNEL_SIZE := 6144k
++	IMAGE/factory.bin := append-kernel | pad-to 6144k | append-rootfs | append-metadata
++	DEVICE_PACKAGES := ath11k-firmware-ipq5018-qcn6122 \
++		ipq-wifi-jdcloud_ax3000 e2fsprogs kmod-fs-ext4 \
++		nss-tools-dwmac kmod-qca-nss-drv-pppoe \
++		-wpad-basic-mbedtls wpad-mbedtls
++endef
++TARGET_DEVICES += jdcloud_ax3000
++
+ define Device/linksys_ipq50xx_mx_base
+ 	$(call Device/FitImageLzma)
+ 	DEVICE_VENDOR := Linksys

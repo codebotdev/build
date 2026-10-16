@@ -1,0 +1,20 @@
+diff --git a/package/kernel/mac80211/ath.mk b/package/kernel/mac80211/ath.mk
+index ca9c267af793f13616d48db22a49b916beaf5e5c..639ab692a0dd3b99da40a0017cc2b2d3dabd0cc6 100644
+--- a/package/kernel/mac80211/ath.mk
++++ b/package/kernel/mac80211/ath.mk
+@@ -413,6 +413,7 @@ define KernelPackage/ath11k/config
+                	 TARGET_qualcommax_ipq807x_DEVICE_xiaomi_ax3600 || \
+                	 TARGET_qualcommax_ipq807x_DEVICE_zte_mf269 )
+                select ATH11K_MEM_PROFILE_256M if TARGET_qualcommax_ipq807x_DEVICE_netgear_wax218
++               default y if TARGET_qualcommax_ipq50xx_DEVICE_jdcloud_ax3000
+                default n
+                help
+                   Say Y to offload the ath11k data path to the NSS cores
+@@ -484,6 +485,7 @@ define KernelPackage/ath11k/config
+             prompt "Memory Profile"
+             depends on PACKAGE_kmod-ath11k
+             default ATH11K_MEM_PROFILE_256M if TARGET_qualcommax_ipq50xx_DEVICE_cudy_p5 || TARGET_qualcommax_ipq50xx_DEVICE_tplink_ex511-v2 || TARGET_qualcommax_ipq50xx_DEVICE_xiaomi_mi-router-ax3000t-v2
++            default ATH11K_MEM_PROFILE_512M if TARGET_qualcommax_ipq50xx_DEVICE_jdcloud_ax3000
+             default ATH11K_MEM_PROFILE_1G
+             help
+             	This option allows you to select the memory profile.

@@ -1,0 +1,37 @@
+diff --git a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq50xx b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq50xx
+index 3c830f792f9e7d1ba75e7f2e0492e4cae8aba633..bedae154464fc70e61f6ea64b255edfedecc0726 100644
+--- a/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq50xx
++++ b/package/boot/uboot-tools/uboot-envtools/files/qualcommax_ipq50xx
+@@ -1,13 +1,28 @@
+-[ -e /etc/config/ubootenv ] && exit 0
++. /lib/functions.sh
++
++board=$(board_name)
++
++if [ -e /etc/config/ubootenv ]; then
++	case "$board" in
++	jdcloud,ax3000)
++		# Older images created an empty file for this unsupported board.
++		[ -s /etc/config/ubootenv ] && exit 0
++		;;
++	*)
++		exit 0
++		;;
++	esac
++fi
+ 
+ touch /etc/config/ubootenv
+ 
+ . /lib/uboot-envtools.sh
+-. /lib/functions.sh
+-
+-board=$(board_name)
+ 
+ case "$board" in
++jdcloud,ax3000)
++	# eMMC APPSBLENV: 256 KiB environment with a 64 KiB sector size.
++	ubootenv_add_mmc "0:APPSBLENV" "" "0x0" "0x40000" "0x10000"
++	;;
+ cmcc,mr3000d-ci|\
+ cmcc,pz-l8|\
+ cmcc,rax3000q|\

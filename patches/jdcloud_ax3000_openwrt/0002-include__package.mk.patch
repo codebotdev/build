@@ -1,0 +1,21 @@
+diff --git a/include/package.mk b/include/package.mk
+index 4e70baf076f5b1ee4de9c8336086938e1a8dad18..9dde26ae7ca35aa35d2807f685865e941c94ecd0 100644
+--- a/include/package.mk
++++ b/include/package.mk
+@@ -98,6 +98,16 @@ endif
+ 
+ include $(INCLUDE_DIR)/quilt.mk
+ 
++# Keep project-specific feed patches outside the generated feeds directory.
++LOCAL_PACKAGE_PATCH_DIR:=$(TOPDIR)/package-patches/$(PKG_NAME)
++ifneq ($(wildcard $(LOCAL_PACKAGE_PATCH_DIR)/*.patch),)
++  PKG_FILE_DEPENDS += $(LOCAL_PACKAGE_PATCH_DIR)
++  define Build/ApplyLocalPatches
++	$(call PatchDir,$(PKG_BUILD_DIR),$(LOCAL_PACKAGE_PATCH_DIR),local/)
++  endef
++  Hooks/Prepare/Post += Build/ApplyLocalPatches
++endif
++
+ find_library_dependencies = \
+ 	$(wildcard $(patsubst %,$(STAGING_DIR)/pkginfo/%.version, \
+ 		$(filter-out $(BUILD_PACKAGES), $(sort $(foreach dep4, \

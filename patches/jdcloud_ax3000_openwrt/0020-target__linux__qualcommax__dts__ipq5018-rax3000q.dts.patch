@@ -1,0 +1,23 @@
+diff --git a/target/linux/qualcommax/dts/ipq5018-rax3000q.dts b/target/linux/qualcommax/dts/ipq5018-rax3000q.dts
+index 23a1637ee0c62717fdc89d91bc182ec5e0f48947..51b1b7cb2ddd404258b416b3933299e4aac1b9ae 100644
+--- a/target/linux/qualcommax/dts/ipq5018-rax3000q.dts
++++ b/target/linux/qualcommax/dts/ipq5018-rax3000q.dts
+@@ -337,7 +337,7 @@
+ 	// IPQ5018
+ 	status = "disabled";
+ 
+-	qcom,rproc = <&q6_wcss_pd1>;
++	qcom,rproc = <&q6v5_wcss>;
+ 	qcom,ath11k-calibration-variant = "CMCC-RAX3000Q";
+ 	qcom,ath11k-fw-memory-mode = <1>;
+ 	qcom,bdf-addr = <0x4c400000>;
+@@ -347,8 +347,7 @@
+ 	// QCN6102 5G
+ 	status = "disabled";
+ 
+-	qcom,rproc = <&q6_wcss_pd2>;
+-	qcom,userpd-subsys-name = "q6v5_wcss_userpd2";
++	qcom,rproc = <&q6v5_wcss>;
+ 	qcom,ath11k-calibration-variant = "CMCC-RAX3000Q";
+ 	qcom,ath11k-fw-memory-mode = <1>;
+ 	qcom,bdf-addr = <0x4d100000>;

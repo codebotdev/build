@@ -1,0 +1,24 @@
+diff --git a/target/linux/qualcommax/dts/ipq5018-gl-x2000.dts b/target/linux/qualcommax/dts/ipq5018-gl-x2000.dts
+index b11b7f1360eac4b515c903264d170e3ecd514f4e..e229a48d1a931218eccd117bdd51b36676c7f322 100644
+--- a/target/linux/qualcommax/dts/ipq5018-gl-x2000.dts
++++ b/target/linux/qualcommax/dts/ipq5018-gl-x2000.dts
+@@ -438,8 +438,7 @@
+ &wifi {
+ 	status = "okay";
+ 
+-	qcom,rproc = <&q6_wcss_pd1>;
+-	qcom,userpd-subsys-name = "q6v5_wcss_userpd1";
++	qcom,rproc = <&q6v5_wcss>;
+ 	qcom,ath11k-calibration-variant = "GL-iNet-GL-X2000";
+ 	qcom,ath11k-fw-memory-mode = <1>;
+ 	qcom,bdf-addr = <0x4c400000>;
+@@ -457,8 +456,7 @@
+ &wifi2 {
+ 	status = "okay";
+ 
+-	qcom,rproc = <&q6_wcss_pd3>;
+-	qcom,userpd-subsys-name = "q6v5_wcss_userpd3";
++	qcom,rproc = <&q6v5_wcss>;
+ 	qcom,ath11k-calibration-variant = "GL-iNet-GL-X2000";
+ 	qcom,ath11k-fw-memory-mode = <1>;
+ 	qcom,bdf-addr = <0x4e500000>;

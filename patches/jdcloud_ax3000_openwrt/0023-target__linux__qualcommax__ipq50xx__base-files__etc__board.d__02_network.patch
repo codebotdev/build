@@ -1,0 +1,26 @@
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network b/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network
+index f725d501c9846796c87dfd1c76b1543d053f9727..e96ea271612c3c057141ef9c6a98881998552b5a 100644
+--- a/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network
++++ b/target/linux/qualcommax/ipq50xx/base-files/etc/board.d/02_network
+@@ -25,6 +25,7 @@ ipq50xx_setup_interfaces()
+ 		;;
+ 	cmcc,mr3000d-ci|\
+ 	cmcc,rax3000q|\
++	jdcloud,ax3000|\
+ 	linksys,mx2000|\
+ 	linksys,mx5500|\
+ 	linksys,spnmx56|\
+@@ -63,6 +64,13 @@ ipq50xx_setup_macs()
+ 	local label_mac=""
+ 
+ 	case $board in
++	jdcloud,ax3000)
++		# U-Boot supplies the GMAC addresses via the ethernet aliases.
++		label_mac=$(get_mac_label_dt)
++		[ -n "$label_mac" ] || return
++		ucidef_set_interface_macaddr "lan" "$label_mac"
++		ucidef_set_label_macaddr "$label_mac"
++		;;
+ 	mercusys,mr80x-v2|\
+ 	tplink,archer-ax55-v1)
+ 		# factory MAC is 6 raw bytes in tp_data/default-mac, mounted

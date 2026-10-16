@@ -1,0 +1,26 @@
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata b/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+index 832ea0c04fd4aa43029ac883068542e78e875142..2647c07ec36f332178fc8b439a659aa4e284f604 100644
+--- a/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
++++ b/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware/11-ath11k-caldata
+@@ -16,6 +16,10 @@ board=$(board_name)
+ case "$FIRMWARE" in
+ "ath11k/IPQ5018/hw1.0/cal-ahb-c000000.wifi.bin")
+ 	case "$board" in
++	jdcloud,ax3000)
++		caldata_extract_mmc "0:ART" 0x1000 0x20000
++		ath11k_remove_regdomain
++		;;
+ 	cmcc,mr3000d-ci)
+ 		caldata_extract "0:art" 0x1000 0x20000
+ 		wlan_mac=$(mtd_get_mac_binary 0:art 12)
+@@ -115,6 +119,10 @@ case "$FIRMWARE" in
+ 	;;
+ "ath11k/QCN6122/hw1.0/cal-ahb-b00a040.wifi.bin")
+ 	case "$board" in
++	jdcloud,ax3000)
++		caldata_extract_mmc "0:ART" 0x26800 0x20000
++		ath11k_remove_regdomain
++		;;
+ 	cmcc,mr3000d-ci)
+ 		caldata_extract "0:art" 0x26800 0x20000
+ 		wlan_mac=$(mtd_get_mac_binary 0:art 18)

@@ -1,0 +1,152 @@
+name: Build OpenWrt firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Firmware source repository (owner/repo)
+        required: true
+        default: kuncy7/openwrt-nss-edma
+        type: string
+      source_branch:
+        description: Firmware source branch, tag or commit
+        required: true
+        default: c3po-tag-8021q
+        type: string
+      patches:
+        description: Folder under ./patches (empty to skip)
+        required: false
+        default: jdcloud_ax3000_openwrt
+        type: string
+      config:
+        description: Device config path in the patched source tree
+        required: true
+        default: jdcloud_ax3000.config
+        type: string
+      extra_config:
+        description: Extra config path in source (merged first; empty to skip)
+        required: false
+        default: kmods.config
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: openwrt-${{ inputs.source_repository }}-${{ inputs.source_branch }}-${{ inputs.patches }}-${{ inputs.config }}-${{ inputs.extra_config }}
+  cancel-in-progress: false
+
+env:
+  TZ: Asia/Shanghai
+  SOURCE_DIR: /build/source
+  SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+  SOURCE_BRANCH: ${{ inputs.source_branch }}
+  PATCHES_NAME: ${{ inputs.patches }}
+  CONFIG_NAME: ${{ inputs.config }}
+  EXTRA_CONFIG_NAME: ${{ inputs.extra_config }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout build project
+        uses: actions/checkout@v4
+
+      - name: Prepare runner environment
+        run: |
+          if command -v docker >/dev/null 2>&1; then
+            sudo docker image prune --all --force || true
+          fi
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/powershell
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses-dev libssl-dev python3 python3-setuptools \
+            python3-pyelftools rsync swig unzip zlib1g-dev file wget curl \
+            ca-certificates subversion help2man xsltproc libelf-dev \
+            libtool autoconf automake cmake ninja-build pkgconf zstd
+          sudo apt-get clean
+          if ! command -v aws >/dev/null 2>&1; then
+            curl -sS "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip -q awscliv2.zip
+            sudo ./aws/install --update
+            rm -rf aws awscliv2.zip
+          fi
+          sudo mkdir -p /build /upload
+          sudo chown -R "$USER:$USER" /build /upload
+          ln -sfn /build "$GITHUB_WORKSPACE/build"
+          command -v gh
+          command -v aws
+          aws --version
+          df -hT
+          free -h
+
+      - name: Checkout firmware source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_branch }}
+          path: build/source
+          token: ${{ secrets.OPENWRT_SOURCE_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Apply source patches
+        run: bash ./scripts/apply-openwrt-patches.sh
+
+      - name: Setup APK signing key
+        env:
+          BUILD_PRIVATE_KEY: ${{ secrets.BUILD_PRIVATE_KEY }}
+        run: |
+          if [ -n "$BUILD_PRIVATE_KEY" ]; then
+            printf '%s\n' "$BUILD_PRIVATE_KEY" | tr -d '\r' > "$SOURCE_DIR/private-key.pem"
+            chmod 600 "$SOURCE_DIR/private-key.pem"
+          fi
+
+      - name: Build firmware
+        id: firmware
+        run: bash ./scripts/build_openwrt.sh
+
+      - name: Upload firmware and package repositories to R2
+        continue-on-error: true
+        env:
+          REPO_BUCKET_NAME: ${{ secrets.REPO_BUCKET_NAME || vars.REPO_BUCKET_NAME }}
+          REPO_ACCOUNT_ID: ${{ secrets.REPO_ACCOUNT_ID || vars.REPO_ACCOUNT_ID }}
+          REPO_ACCESS_KEY_ID: ${{ secrets.REPO_ACCESS_KEY_ID }}
+          REPO_SECRET_ACCESS_KEY: ${{ secrets.REPO_SECRET_ACCESS_KEY }}
+        run: bash ./scripts/upload_openwrt.sh
+
+      - name: Publish firmware release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DISTRIBUTION: ${{ steps.firmware.outputs.distribution }}
+          PROFILE: ${{ steps.firmware.outputs.profile }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          upload_files=(/upload/*)
+          (( ${#upload_files[@]} > 0 )) || { echo 'No release files found' >&2; exit 1; }
+          branch_tag=$(printf '%s' "$SOURCE_BRANCH" | sed 's/[^A-Za-z0-9._-]/-/g' | cut -c1-60)
+          # Separate repositories/configurations even when branch/device match.
+          build_id=$(printf '%s\n' "$SOURCE_REPOSITORY" "$SOURCE_BRANCH" "$PATCHES_NAME" "$CONFIG_NAME" "$EXTRA_CONFIG_NAME" | sha256sum | cut -c1-12)
+          tag="${DISTRIBUTION}-${PROFILE}-${branch_tag}-${build_id}-$(date +%F)"
+          source_sha=$(git -C "$SOURCE_DIR" rev-parse HEAD)
+          notes=$(cat <<EOF
+          $DISTRIBUTION $PROFILE firmware built on $(date +'%Y-%m-%d %H:%M:%S %Z')
+          Source: $SOURCE_REPOSITORY ($SOURCE_BRANCH@$source_sha)
+          Patches: ${PATCHES_NAME:-none}
+          Config: $CONFIG_NAME; extra config: ${EXTRA_CONFIG_NAME:-none}
+          Build project: $GITHUB_SHA
+          EOF
+          )
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${upload_files[@]}" --clobber
+            gh release edit "$tag" --notes "$notes"
+          else
+            gh release create "$tag" "${upload_files[@]}" \
+              --target "$GITHUB_SHA" --title "$tag" --notes "$notes"
+          fi

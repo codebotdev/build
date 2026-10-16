@@ -1,0 +1,23 @@
+diff --git a/target/linux/qualcommax/dts/ipq5018-re700x.dts b/target/linux/qualcommax/dts/ipq5018-re700x.dts
+index 79111058174c3a0650c2215bb877018c7d1f88b2..fe355097724a37c9549363489bc464807a226cd5 100644
+--- a/target/linux/qualcommax/dts/ipq5018-re700x.dts
++++ b/target/linux/qualcommax/dts/ipq5018-re700x.dts
+@@ -277,7 +277,7 @@
+ 	 */
+ 	status = "disabled";
+ 
+-	qcom,rproc = <&q6_wcss_pd1>;
++	qcom,rproc = <&q6v5_wcss>;
+ 	qcom,ath11k-calibration-variant = "TP-Link-RE700X";
+ 	qcom,ath11k-fw-memory-mode = <1>;
+ 	qcom,bdf-addr = <0x4c400000>;
+@@ -297,8 +297,7 @@
+ 	 */
+ 	status = "disabled";
+ 
+-	qcom,rproc = <&q6_wcss_pd2>;
+-	qcom,userpd-subsys-name = "q6v5_wcss_userpd2";
++	qcom,rproc = <&q6v5_wcss>;
+ 	qcom,ath11k-calibration-variant = "TP-Link-RE700X";
+ 	qcom,ath11k-fw-memory-mode = <1>;
+ 	qcom,bdf-addr = <0x4d100000>;

@@ -1,0 +1,12 @@
+diff --git a/package/nss/nss-tools/files/nss-dwmac.defaults b/package/nss/nss-tools/files/nss-dwmac.defaults
+index 9642ca73d9fcd689702fb66c56a2107c966fda51..82d59791e8a9325480670eb7e52a71f54e81180a 100644
+--- a/package/nss/nss-tools/files/nss-dwmac.defaults
++++ b/package/nss/nss-tools/files/nss-dwmac.defaults
+@@ -74,6 +74,7 @@ nss_dwmac_board_defaults() {
+ 		switch_args=''
+ 		vtu='1:6t,1u,2u,3u,4u;2:6t,0u'
+ 		;;
++	jdcloud,ax3000|\
+ 	xunison,exigo-hub-d50-5g)
+ 		# WAN is GMAC0's own GE PHY (netdev 'wan'), so GMAC1 - the switch
+ 		# trunk - comes up as eth1 and carries LAN only: port 0 = CPU

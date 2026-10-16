@@ -1,0 +1,33 @@
+diff --git a/target/linux/qualcommax/dts/ipq5018-dr5018s.dts b/target/linux/qualcommax/dts/ipq5018-dr5018s.dts
+index 204beefdbfd546a9f4ab4c38b8d7c93f38295f05..273dafa7d5acaced7fcada75f2e8b0402c874dbd 100644
+--- a/target/linux/qualcommax/dts/ipq5018-dr5018s.dts
++++ b/target/linux/qualcommax/dts/ipq5018-dr5018s.dts
+@@ -370,7 +370,7 @@
+ &wifi {
+ 	status = "okay";
+ 
+-	qcom,rproc = <&q6_wcss_pd1>;
++	qcom,rproc = <&q6v5_wcss>;
+ 	qcom,ath11k-calibration-variant = "Wallys-DR5018S-2G";
+ 	qcom,ath11k-fw-memory-mode = <1>;
+ 	qcom,bdf-addr = <0x4c400000>;
+@@ -379,8 +379,7 @@
+ &wifi1 {
+ 	status = "okay";
+ 
+-	qcom,rproc = <&q6_wcss_pd2>;
+-	qcom,userpd-subsys-name = "q6v5_wcss_userpd2";
++	qcom,rproc = <&q6v5_wcss>;
+ 	qcom,ath11k-calibration-variant = "Wallys-DR5018S-5G";
+ 	qcom,ath11k-fw-memory-mode = <1>;
+ 	qcom,m3-dump-addr = <0x4df00000>;
+@@ -389,8 +388,7 @@
+ &wifi2 {
+ 	status = "okay";
+ 
+-	qcom,rproc = <&q6_wcss_pd3>;
+-	qcom,userpd-subsys-name = "q6v5_wcss_userpd3";
++	qcom,rproc = <&q6v5_wcss>;
+ 	qcom,ath11k-calibration-variant = "Wallys-DR5018S-6G";
+ 	qcom,ath11k-fw-memory-mode = <1>;
+ 	qcom,bdf-addr = <0x4e500000>;

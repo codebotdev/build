@@ -1,0 +1,13 @@
+diff --git a/package/base-files/files/lib/upgrade/emmc.sh b/package/base-files/files/lib/upgrade/emmc.sh
+index fc40f3c304863c81ac9c9fd2f8ed36931e02d80e..d787c267398f8fee2884a0a8e4a69eb6d21599c2 100644
+--- a/package/base-files/files/lib/upgrade/emmc.sh
++++ b/package/base-files/files/lib/upgrade/emmc.sh
+@@ -41,7 +41,7 @@ emmc_upgrade_tar() {
+ 	[ "$has_kernel" = 1 -a "$EMMC_KERN_DEV" ] &&
+ 		export EMMC_KERNEL_BLOCKS=$(($(tar x${gz}f "$tar_file" ${board_dir}/kernel -O | dd of="$EMMC_KERN_DEV" bs=512 2>&1 | grep "records out" | cut -d' ' -f1)))
+ 
+-	if [ -z "$UPGRADE_BACKUP" ]; then
++	if [ -z "$UPGRADE_BACKUP" ] && [ "${EMMC_SKIP_OVERLAY_RESET:-0}" != 1 ]; then
+ 		if [ "$EMMC_DATA_DEV" ]; then
+ 			dd if=/dev/zero of="$EMMC_DATA_DEV" bs=512 count=8
+ 		elif [ "$EMMC_ROOTFS_BLOCKS" ]; then

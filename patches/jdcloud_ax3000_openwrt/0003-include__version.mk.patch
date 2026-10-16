@@ -1,0 +1,13 @@
+diff --git a/include/version.mk b/include/version.mk
+index b1e414f1895184274a87c70c9a8528720c6295b6..b5ae17c378737966a68b65e5dee5447e8fcdadcd 100644
+--- a/include/version.mk
++++ b/include/version.mk
+@@ -33,7 +33,7 @@ VERSION_CODE:=$(call qstrip,$(CONFIG_VERSION_CODE))
+ VERSION_CODE:=$(if $(VERSION_CODE),$(VERSION_CODE),$(REVISION))
+ 
+ VERSION_REPO:=$(call qstrip,$(CONFIG_VERSION_REPO))
+-VERSION_REPO:=$(if $(VERSION_REPO),$(VERSION_REPO),https://downloads.openwrt.org/snapshots)
++VERSION_REPO:=$(if $(VERSION_REPO),$(VERSION_REPO),https://mirrors.vsean.net/openwrt/snapshots)
+ 
+ VERSION_DIST:=$(call qstrip,$(CONFIG_VERSION_DIST))
+ VERSION_DIST:=$(if $(VERSION_DIST),$(VERSION_DIST),OpenWrt)

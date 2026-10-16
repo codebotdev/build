@@ -1,0 +1,164 @@
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
+index 3d8c7d81141f5dfaa264df3826f67efbe73f25ef..f010ab5b8c5cde5c1b4e75ddd4bf4aa1268bf763 100644
+--- a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
+@@ -3,9 +3,138 @@
+ PART_NAME=firmware
+ REQUIRE_IMAGE_METADATA=1
+ 
+-RAMFS_COPY_BIN='cmp dumpimage fw_printenv fw_setenv head seq'
++RAMFS_COPY_BIN='cmp dumpimage fw_printenv fw_setenv head seq mkfs.ext4'
+ RAMFS_COPY_DATA='/etc/fw_env.config /var/lock/fw_printenv.lock'
+ 
++jdcloud_ax3000_check_image() {
++	local image="$1"
++	local board_dir part dev size capacity data_capacity data_reserve
++	local kernel_size rootfs_size backup_size=0 restore_size=0
++
++	# Only the sysupgrade tar is suitable for the separate GPT partitions.
++	board_dir=$(tar tf "$image" 2>/dev/null | grep -m 1 '^sysupgrade-.*/$')
++	board_dir=${board_dir%/}
++	[ -n "$board_dir" ] || return 1
++	tar tf "$image" "$board_dir/kernel" "$board_dir/root" >/dev/null 2>&1 || return 1
++	tar xf "$image" -O >/dev/null 2>&1 || return 1
++	kernel_size=$(tar xf "$image" "$board_dir/kernel" -O | wc -c)
++	rootfs_size=$(tar xf "$image" "$board_dir/root" -O | wc -c)
++	[ "$kernel_size" -gt 0 ] && [ "$kernel_size" -le 6291456 ] || return 1
++	[ "$rootfs_size" -gt 0 ] || return 1
++	JDC_KERNEL_BLOCKS=$(((kernel_size + 511) / 512))
++	JDC_EXPECTED_ROOTFS_BLOCKS=$((((rootfs_size + 65535) / 65536) * 128))
++
++	# Both slots contain firmware only. The shared GPT rootfs_data partition
++	# is the ext4 overlay regardless of which bootloader slot is selected.
++	for part in 0:HLOS 0:HLOS_1 rootfs rootfs_1; do
++		dev=$(find_mmc_part "$part")
++		[ -b "$dev" ] || {
++			echo "Cannot find AX3000 eMMC partition $part"
++			return 1
++		}
++		capacity=$(cat "/sys/class/block/${dev##*/}/size") || return 1
++		case "$part" in
++		0:HLOS*) size=$JDC_KERNEL_BLOCKS;;
++		rootfs*) size=$JDC_EXPECTED_ROOTFS_BLOCKS;;
++		esac
++		[ "$capacity" -ge "$size" ] || {
++			echo "Image does not fit AX3000 eMMC partition $part"
++			return 1
++		}
++	done
++
++	JDC_DATA_DEV=$(find_mmc_part "rootfs_data")
++	[ -b "$JDC_DATA_DEV" ] || {
++		echo "Cannot find AX3000 eMMC partition rootfs_data"
++		return 1
++	}
++	data_capacity=$(cat "/sys/class/block/${JDC_DATA_DEV##*/}/size") || return 1
++	# Leave at least 32 MiB (or 25% on larger partitions) for ext4 metadata,
++	# journal, reserved blocks and the initial overlay. This also rejects
++	# oversized backups before either firmware slot is invalidated.
++	data_reserve=$((data_capacity / 4))
++	[ "$data_reserve" -ge 65536 ] || data_reserve=65536
++	if [ -n "$UPGRADE_BACKUP" ]; then
++		[ -f "$UPGRADE_BACKUP" ] && tar tzf "$UPGRADE_BACKUP" >/dev/null 2>&1 || {
++			echo "Invalid AX3000 configuration backup"
++			return 1
++		}
++		backup_size=$(wc -c < "$UPGRADE_BACKUP") || return 1
++		# During first-boot restoration the archive and extracted files coexist.
++		# Count regular file sizes as well, rather than only the compressed tgz.
++		restore_size=$(tar tvzf "$UPGRADE_BACKUP" | awk '$1 ~ /^-/ { size += $3 } END { printf "%.0f", size }') || return 1
++	fi
++	[ "$data_capacity" -gt "$data_reserve" ] &&
++		[ "$((data_capacity - data_reserve))" -ge "$(((backup_size + restore_size + 511) / 512))" ] || {
++		echo "Configuration backup does not fit AX3000 rootfs_data"
++		return 1
++	}
++}
++
++jdcloud_ax3000_data_unmounted() {
++	local dev_id
++
++	dev_id=$(cat "/sys/class/block/${JDC_DATA_DEV##*/}/dev") || return 1
++	# Check the block device number, including mounts made through aliases.
++	if awk -v dev="$dev_id" '$3 == dev { found = 1 } END { exit !found }' /proc/self/mountinfo; then
++		echo "AX3000 rootfs_data is still mounted; refusing to format it"
++		return 1
++	fi
++}
++
++jdcloud_ax3000_reset_overlay() {
++	local mountpoint=/tmp/jdcloud-new-overlay
++
++	jdcloud_ax3000_data_unmounted || return 1
++	mkfs.ext4 -F -L rootfs_data "$JDC_DATA_DEV" || return 1
++	[ -n "$UPGRADE_BACKUP" ] || return 0
++
++	mkdir -p "$mountpoint" || return 1
++	mount -t ext4 "$JDC_DATA_DEV" "$mountpoint" || return 1
++	# fstools preserves this file while initializing the new overlay, moves
++	# it into upper/, and the standard preinit restores its configuration.
++	if ! cp "$UPGRADE_BACKUP" "$mountpoint/${BACKUP_FILE:-sysupgrade.tgz}" ||
++	   ! cmp -s "$UPGRADE_BACKUP" "$mountpoint/${BACKUP_FILE:-sysupgrade.tgz}"; then
++		echo "Failed to save AX3000 configuration backup to rootfs_data"
++		umount "$mountpoint"
++		return 1
++	fi
++	sync
++	umount "$mountpoint" || return 1
++	rmdir "$mountpoint"
++}
++
++jdcloud_ax3000_do_upgrade() {
++	local slot
++	# This platform resets its ext4 data partition itself; do not let the
++	# generic eMMC helper clear a rootfs tail on upgrades without a backup.
++	local EMMC_SKIP_OVERLAY_RESET=1
++
++	jdcloud_ax3000_check_image "$1" || exit 1
++	jdcloud_ax3000_data_unmounted || exit 1
++	command -v mkfs.ext4 >/dev/null 2>&1 || exit 1
++	unset CI_DATAPART CI_DTBPART EMMC_DATA_DEV EMMC_DTB_DEV
++	for slot in 0 1; do
++		CI_KERNPART="0:HLOS"
++		CI_ROOTPART="rootfs"
++		[ "$slot" = 1 ] && {
++			CI_KERNPART="0:HLOS_1"
++			CI_ROOTPART="rootfs_1"
++		}
++		unset EMMC_KERN_DEV EMMC_ROOT_DEV EMMC_ROOTFS_BLOCKS EMMC_KERNEL_BLOCKS
++		emmc_do_upgrade "$1" || exit 1
++		[ "${EMMC_ROOTFS_BLOCKS:-0}" -eq "$JDC_EXPECTED_ROOTFS_BLOCKS" ] &&
++			[ "${EMMC_KERNEL_BLOCKS:-0}" -eq "$JDC_KERNEL_BLOCKS" ] || {
++			echo "Incomplete AX3000 eMMC write in slot $slot"
++			exit 1
++		}
++	done
++	# Always reset the shared overlay, including sysupgrade -n. Old packages
++	# and their database must not shadow the freshly written firmware.
++	jdcloud_ax3000_reset_overlay || exit 1
++	sync
++}
++
+ xiaomi_initramfs_prepare() {
+ 	# Wipe UBI if running initramfs
+ 	[ "$(rootfs_type)" = "tmpfs" ] || return 0
+@@ -347,6 +476,9 @@ linksys_mx_pre_upgrade() {
+ 
+ platform_check_image() {
+ 	case "$(board_name)" in
++	jdcloud,ax3000)
++		jdcloud_ax3000_check_image "$1"
++		;;
+ 	cudy,p5)
+ 		nand_do_platform_check "$(board_name)" "$1"
+ 		;;
+@@ -378,6 +510,9 @@ platform_pre_upgrade() {
+ 
+ platform_do_upgrade() {
+ 	case "$(board_name)" in
++	jdcloud,ax3000)
++		jdcloud_ax3000_do_upgrade "$1"
++		;;
+ 	cudy,p5)
+ 		cudy_p5_do_upgrade "$1"
+ 		;;

@@ -1,0 +1,146 @@
+diff --git a/package-patches/qca-nss-ecm/1000-use-independent-conntrack-kernel-notifier.patch b/package-patches/qca-nss-ecm/1000-use-independent-conntrack-kernel-notifier.patch
+new file mode 100644
+index 0000000000000000000000000000000000000000..c3873b5907a3c2e4a5b528c2f0bd177744f33aff
+--- /dev/null
++++ b/package-patches/qca-nss-ecm/1000-use-independent-conntrack-kernel-notifier.patch
+@@ -0,0 +1,140 @@
++Subject: [PATCH] ecm: leave conntrack netlink notifications registered
++
++Use the separate kernel observer API when provided by the target kernel.
++Keep the existing notifier interfaces for other kernels. Acquire IPv4/IPv6
++conntrack references before registration and unregister synchronously
++before releasing references, including initialization failure paths.
++
++---
++--- a/ecm_conntrack_notifier.c
+++++ b/ecm_conntrack_notifier.c
++@@ -350,7 +350,7 @@
++ EXPORT_SYMBOL(ecm_conntrack_ipv4_event);
++ 
++ #ifdef CONFIG_NF_CONNTRACK_EVENTS
++-#ifndef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
+++#if !defined(NF_CONNTRACK_HAS_KERNEL_NOTIFIER) && !defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
++ static int ecm_conntrack_expect_event(unsigned int events, const struct nf_exp_event *item)
++ {
++ 	return 0;
++@@ -361,13 +361,13 @@
++  * ecm_conntrack_event()
++  *	Callback event invoked when conntrack connection state changes, currently we handle destroy events to quickly release state
++  */
++-#ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
+++#if defined(NF_CONNTRACK_HAS_KERNEL_NOTIFIER) || defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
++ static int ecm_conntrack_event(struct notifier_block *this, unsigned long events, void *ptr)
++ #else
++ static int ecm_conntrack_event(unsigned int events, const struct nf_ct_event *item)
++ #endif
++ {
++-#ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
+++#if defined(NF_CONNTRACK_HAS_KERNEL_NOTIFIER) || defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
++ 	struct nf_ct_event *item = (struct nf_ct_event *)ptr;
++ #endif
++ 	struct nf_conn *ct = item->ct;
++@@ -445,7 +445,7 @@
++ 	return ret;
++ }
++ 
++-#ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
+++#if defined(NF_CONNTRACK_HAS_KERNEL_NOTIFIER) || defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
++ /*
++  * struct notifier_block ecm_conntrack_notifier
++  *	Netfilter conntrack event system to monitor connection tracking changes
++@@ -512,45 +512,43 @@
++ 
++ #ifdef CONFIG_NF_CONNTRACK_EVENTS
++ 	/*
++-	 * Eventing subsystem is available so we register a notifier hook to get fast notifications of expired connections
++-	 */
++-#ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
++-	result = nf_conntrack_register_notifier(&init_net, &ecm_conntrack_notifier);
++-	if (result < 0) {
++-		DEBUG_ERROR("Can't register nf notifier hook.\n");
++-		goto init_cleanup_1;
++-	}
++-#else
++-	nf_conntrack_register_notifier(&init_net, &ecm_conntrack_notifier);
++-#endif
++-
++-	/*
++ 	 * Hold netns reference to keep the basic conntrack alive and
++ 	 * track conntrack even when firewall stopped.
++ 	 */
++ 	result = nf_ct_netns_get(&init_net, NFPROTO_IPV4);
++ 	if (result < 0) {
++ 		DEBUG_ERROR("Can't hold ipv4 netns.\n");
++-		goto init_cleanup_2;
+++		goto init_cleanup_1;
++ 	}
++ #ifdef ECM_IPV6_ENABLE
++ 	result = nf_ct_netns_get(&init_net, NFPROTO_IPV6);
++ 	if (result < 0) {
++ 		DEBUG_ERROR("Can't hold ipv6 netns.\n");
++ 		nf_ct_netns_put(&init_net, NFPROTO_IPV4);
++-		goto init_cleanup_2;
++-	}
++-#endif
+++		goto init_cleanup_1;
+++	}
+++#endif
+++
+++	/* Register after acquiring all conntrack references. */
+++#ifdef NF_CONNTRACK_HAS_KERNEL_NOTIFIER
+++	result = nf_conntrack_register_kernel_notifier(&init_net, &ecm_conntrack_notifier);
+++#elif defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
+++	result = nf_conntrack_register_notifier(&init_net, &ecm_conntrack_notifier);
+++#else
+++	nf_conntrack_register_notifier(&init_net, &ecm_conntrack_notifier);
+++	result = 0;
+++#endif
+++	if (result < 0) {
+++		DEBUG_ERROR("Can't register nf notifier hook.\n");
+++#ifdef ECM_IPV6_ENABLE
+++		nf_ct_netns_put(&init_net, NFPROTO_IPV6);
+++#endif
+++		nf_ct_netns_put(&init_net, NFPROTO_IPV4);
+++		goto init_cleanup_1;
+++	}
++ #endif
++ 
++ 	return 0;
++-
++-init_cleanup_2:
++-#ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
++-	nf_conntrack_unregister_notifier(&init_net, &ecm_conntrack_notifier);
++-#else
++-	nf_conntrack_unregister_notifier(&init_net);
++-#endif
++ 
++ init_cleanup_1:
++ 	ecm_debugfs_remove_recursive(ecm_conntrack_notifier_dentry);
++@@ -567,18 +565,19 @@
++ 	DEBUG_INFO("ECM Conntrack Notifier exit\n");
++ 
++ #ifdef CONFIG_NF_CONNTRACK_EVENTS
++-	/*
++-	 * Release netns reference.
++-	 */
+++	/* Stop callbacks before dropping conntrack references and ECM state. */
+++#ifdef NF_CONNTRACK_HAS_KERNEL_NOTIFIER
+++	nf_conntrack_unregister_kernel_notifier(&init_net, &ecm_conntrack_notifier);
+++#elif defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
+++	nf_conntrack_unregister_notifier(&init_net, &ecm_conntrack_notifier);
+++#else
+++	nf_conntrack_unregister_notifier(&init_net);
+++	synchronize_rcu();
+++#endif
++ 	nf_ct_netns_put(&init_net, NFPROTO_IPV4);
++ #ifdef ECM_IPV6_ENABLE
++ 	nf_ct_netns_put(&init_net, NFPROTO_IPV6);
++ #endif
++-#ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
++-	nf_conntrack_unregister_notifier(&init_net, &ecm_conntrack_notifier);
++-#else
++-	nf_conntrack_unregister_notifier(&init_net);
++-#endif
++ #endif
++ 	/*
++ 	 * Remove the debugfs files recursively.
