@@ -1,0 +1,55 @@
+From: ImmortalWrt contributors
+Subject: [PATCH] ath11k: authorize NSS peers at the station state transition
+
+Open AP clients reach IEEE80211_STA_AUTHORIZED without installing a key.
+The NSS authorization message was only sent by set_key, leaving such
+clients associated but unable to deliver data, including DHCP requests.
+
+Also send the existing authorization message at ASSOC -> AUTHORIZED.
+Retain set_key authorization for encrypted peer recovery and dynamic VLAN
+ordering. Keep peer lookup and use under base_lock; on submission failure,
+leave the software authorization flag unchanged and return a negative error
+after releasing both locks. The existing helper is a no-op without NSS.
+
+---
+--- a/drivers/net/wireless/ath/ath11k/mac.c
++++ b/drivers/net/wireless/ath/ath11k/mac.c
+@@ -10431,10 +10431,28 @@
+ 		spin_lock_bh(&ar->ab->base_lock);
+ 
+ 		peer = ath11k_peer_find(ar, arvif->vdev_id, sta->addr);
+-		if (peer)
+-			peer->is_authorized = true;
++		if (peer) {
++			/* Open networks do not install a key. Synchronize NSS
++			 * authorization at the mac80211 state transition as well.
++			 * Keep the set_key path for encrypted peer recovery.
++			 */
++			ret = ath11k_nss_set_peer_authorize(ar, peer->peer_id);
++			if (!ret)
++				peer->is_authorized = true;
++		} else if (ar->ab->nss.enabled) {
++			ret = -ENOENT;
++		}
+ 
+ 		spin_unlock_bh(&ar->ab->base_lock);
++
++		if (ret) {
++			ath11k_warn(ar->ab, "failed to authorize peer %pM in NSS: %d\n",
++				    sta->addr, ret);
++			/* NSS TX status values are positive, mac80211 needs errno. */
++			if (ret > 0)
++				ret = -EIO;
++			goto exit;
++		}
+ 
+ 		if (vif->type == NL80211_IFTYPE_STATION && arvif->is_up) {
+ 			ret = ath11k_wmi_set_peer_param(ar, sta->addr,
+@@ -10524,6 +10542,7 @@
+ 				    sta->addr);
+ 	}
+ 
++exit:
+ 	mutex_unlock(&ar->conf_mutex);
+ 	return ret;
+ }

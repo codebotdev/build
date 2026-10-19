@@ -1,0 +1,234 @@
+Subject: [PATCH] nft-fullcone: preserve ctnetlink and track notifier ownership per net
+
+Skipping registration because ctnetlink is present must not mark fullcone
+as registered: removing the last expression would unregister ctnetlink.
+Use the separate kernel notifier chain where available, so ECM, fullcone
+and ctnetlink can receive events together. Keep notifier state per netns,
+unwind pernet registration on module init errors, and do not acquire rule
+references after nf_ct_netns_get() fails. On legacy single-callback kernels,
+only unregister an owned callback and wait for RCU readers before freeing
+its per-net storage.
+
+--- a/src/nft_ext_fullcone.c
++++ b/src/nft_ext_fullcone.c
+@@ -21,6 +21,7 @@
+ #include <linux/netfilter/nf_tables.h>
+ #include <net/netfilter/nf_tables.h>
+ #include <net/netfilter/nf_nat.h>
++#include <net/netns/generic.h>
+ 
+ #include <linux/workqueue.h>
+ 
+@@ -33,15 +34,26 @@
+ 				  struct nf_nat_range *range);
+ #endif
+ 
+-#ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
+-struct notifier_block ct_event_notifier;
+-#else
+-struct nf_ct_event_notifier ct_event_notifier;
+-#endif
++#if defined(NF_CONNTRACK_HAS_KERNEL_NOTIFIER) || defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
++#define FULLCONE_CHAIN_NOTIFIER
++#endif
++
++struct nft_fullcone_net {
++#ifdef FULLCONE_CHAIN_NOTIFIER
++	struct notifier_block notifier;
++#else
++	struct nf_ct_event_notifier notifier;
++#endif
++	unsigned int users;
++	bool registered;
++};
++
++static unsigned int nft_fullcone_net_id;
++static struct pernet_operations nft_fullcone_net_ops = {
++	.id = &nft_fullcone_net_id,
++	.size = sizeof(struct nft_fullcone_net),
++};
+ static DEFINE_MUTEX(nf_ct_net_event_lock);
+-int ct_event_notifier_registered = 0;
+-
+-int module_refer_count = 0;
+ 
+ static void gc_worker(struct work_struct *work);
+ static struct workqueue_struct *wq __read_mostly = NULL;
+@@ -65,7 +77,7 @@
+ };
+ 
+ /* conntrack destroy event callback function */
+-#ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
++#ifdef FULLCONE_CHAIN_NOTIFIER
+ static int ct_event_cb(struct notifier_block *this, unsigned long events, void *ptr)
+ {
+ 	struct nf_ct_event *item = ptr;
+@@ -114,7 +126,7 @@
+ 	return 0;
+ }
+ 
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) && !defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) && !defined(FULLCONE_CHAIN_NOTIFIER)
+ static int exp_event_cb(unsigned int events, const struct nf_exp_event *item)
+ {
+ 	return 0;
+@@ -140,48 +152,44 @@
+ 
+ static int nft_fullcone_init(const struct nft_ctx *ctx, const struct nft_expr *expr, const struct nlattr *const tb[])
+ {
++	struct nft_fullcone_net *fn = net_generic(ctx->net, nft_fullcone_net_id);
+ 	int err;
+ 	int register_ct_notifier_ret = 0;
+ 
+ 	err = nf_ct_netns_get(ctx->net, ctx->family);
++	if (err < 0)
++		return err;
+ 
+ 	mutex_lock(&nf_ct_net_event_lock);
+ 
+-	module_refer_count++;
+-
+-	pr_debug("nft_fullcone_init(): module_refer_count is now %d\n", module_refer_count);
+-
+-	if (module_refer_count == 1) {
+-#ifdef CONFIG_NF_CONNTRACK_CHAIN_EVENTS
+-		ct_event_notifier.notifier_call = ct_event_cb;
++	if (fn->users++ == 0) {
++#ifdef FULLCONE_CHAIN_NOTIFIER
++		fn->notifier.notifier_call = ct_event_cb;
+ #elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+-		ct_event_notifier.ct_event = ct_event_cb;
+-		ct_event_notifier.exp_event = exp_event_cb;
+-#else
+-		ct_event_notifier.fcn = ct_event_cb;
+-#endif
+-
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) && !defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
+-		if (!READ_ONCE(ctx->net->ct.nf_conntrack_event_cb)) {
+-			nf_conntrack_register_notifier(ctx->net, &ct_event_notifier);
+-		}
+-#else
+-		register_ct_notifier_ret = nf_conntrack_register_notifier(ctx->net, &ct_event_notifier);
+-#endif
+-
+-		if (register_ct_notifier_ret) {
+-			/* non-zero means failure */
++		fn->notifier.ct_event = ct_event_cb;
++		fn->notifier.exp_event = exp_event_cb;
++#else
++		fn->notifier.fcn = ct_event_cb;
++#endif
++
++#ifdef NF_CONNTRACK_HAS_KERNEL_NOTIFIER
++		register_ct_notifier_ret = nf_conntrack_register_kernel_notifier(ctx->net, &fn->notifier);
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) && !defined(FULLCONE_CHAIN_NOTIFIER)
++		if (rcu_access_pointer(ctx->net->ct.nf_conntrack_event_cb))
++			register_ct_notifier_ret = -EBUSY;
++		else
++			nf_conntrack_register_notifier(ctx->net, &fn->notifier);
++#else
++		register_ct_notifier_ret = nf_conntrack_register_notifier(ctx->net, &fn->notifier);
++#endif
++		fn->registered = !register_ct_notifier_ret;
++		if (register_ct_notifier_ret)
+ 			pr_warn("failed to register a conntrack notifier. Disable active GC for mappings.\n");
+-		} else {
+-			ct_event_notifier_registered = 1;
+-			pr_debug("nft_fullcone_init(): ct_event_notifier registered\n");
+-		}
+-
+ 	}
+ 
+ 	mutex_unlock(&nf_ct_net_event_lock);
+ 
+-	return err;
++	return 0;
+ }
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+@@ -245,24 +253,22 @@
+ 
+ static void nft_fullcone_common_destory(const struct nft_ctx *ctx)
+ {
++	struct nft_fullcone_net *fn = net_generic(ctx->net, nft_fullcone_net_id);
++
+ 	mutex_lock(&nf_ct_net_event_lock);
+ 
+-	module_refer_count--;
+-
+-	pr_debug("nft_fullcone_common_destory(): module_refer_count is now %d\n", module_refer_count);
+-
+-	if (module_refer_count == 0) {
+-		if (ct_event_notifier_registered) {
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) && !defined(CONFIG_NF_CONNTRACK_CHAIN_EVENTS)
++	if (--fn->users == 0 && fn->registered) {
++#ifdef NF_CONNTRACK_HAS_KERNEL_NOTIFIER
++		nf_conntrack_unregister_kernel_notifier(ctx->net, &fn->notifier);
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) && !defined(FULLCONE_CHAIN_NOTIFIER)
++		/* A later ctnetlink load may have replaced the legacy callback. */
++		if (rcu_access_pointer(ctx->net->ct.nf_conntrack_event_cb) == &fn->notifier)
+ 			nf_conntrack_unregister_notifier(ctx->net);
+-#else
+-			nf_conntrack_unregister_notifier(ctx->net, &ct_event_notifier);
+-#endif
+-			ct_event_notifier_registered = 0;
+-
+-			pr_debug("nft_fullcone_common_destory(): ct_event_notifier unregistered\n");
+-
+-		}
++		synchronize_rcu();
++#else
++		nf_conntrack_unregister_notifier(ctx->net, &fn->notifier);
++#endif
++		fn->registered = false;
+ 	}
+ 
+ 	mutex_unlock(&nf_ct_net_event_lock);
+@@ -417,21 +423,25 @@
+ {
+ 	int ret;
+ 
++	ret = register_pernet_subsys(&nft_fullcone_net_ops);
++	if (ret < 0)
++		return ret;
++
+ 	ret = nft_fullcone_module_init_ipv6();
+ 	if (ret < 0)
+-		return ret;
++		goto err_pernet;
+ 
+ 	ret = nft_fullcone_module_init_inet();
+ 	if (ret < 0) {
+ 		nft_fullcone_module_exit_ipv6();
+-		return ret;
++		goto err_pernet;
+ 	}
+ 
+ 	ret = nft_register_expr(&nft_fullcone_ipv4_type);
+ 	if (ret < 0) {
+ 		nft_fullcone_module_exit_inet();
+ 		nft_fullcone_module_exit_ipv6();
+-		return ret;
++		goto err_pernet;
+ 	}
+ 
+ 	wq = create_singlethread_workqueue(NF_FULLCONE_WORKQUEUE_NAME);
+@@ -440,6 +450,10 @@
+ 	}
+ 
+ 	return ret;
++
++err_pernet:
++	unregister_pernet_subsys(&nft_fullcone_net_ops);
++	return ret;
+ }
+ 
+ static void __exit nft_fullcone_module_exit(void)
+@@ -447,6 +461,7 @@
+ 	nft_fullcone_module_exit_ipv6();
+ 	nft_fullcone_module_exit_inet();
+ 	nft_unregister_expr(&nft_fullcone_ipv4_type);
++	unregister_pernet_subsys(&nft_fullcone_net_ops);
+ 
+ 	if (wq) {
+ 		cancel_delayed_work_sync(&gc_worker_wk);

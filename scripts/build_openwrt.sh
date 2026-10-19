@@ -24,6 +24,7 @@ cd "$SOURCE_DIR"
 
 log 'Updating feeds'
 ./scripts/feeds update -a
+PATCH_PHASE=feeds bash "$SCRIPT_DIR/apply-openwrt-patches.sh"
 # Some source trees use a feed patch helper; others use package.mk hooks.
 if [[ -f scripts/apply-feed-patches.sh ]]; then
     bash ./scripts/apply-feed-patches.sh

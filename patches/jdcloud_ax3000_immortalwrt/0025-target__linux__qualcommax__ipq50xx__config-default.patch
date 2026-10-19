@@ -1,0 +1,43 @@
+diff --git a/target/linux/qualcommax/ipq50xx/config-default b/target/linux/qualcommax/ipq50xx/config-default
+index 33e5611af4..f5b82196bb 100644
+--- a/target/linux/qualcommax/ipq50xx/config-default
++++ b/target/linux/qualcommax/ipq50xx/config-default
+@@ -24,3 +24,38 @@ CONFIG_QCOM_Q6V5_MPD=y
+ CONFIG_QCOM_Q6V5_WCSS_SEC=y
+ CONFIG_QCOM_TMEL_QMP_MAILBOX=y
+ CONFIG_SPI_QPIC_SNAND=y
++
++CONFIG_STMMAC_ETH=y
++CONFIG_STMMAC_PLATFORM=y
++CONFIG_DWMAC_IPQ5018=y
++CONFIG_PCS_QCA_UNIPHY=y
++CONFIG_FWNODE_PCS=y
++CONFIG_NET_DSA_TAG_8021Q=y
++CONFIG_NET_DSA_TAG_QCA_8021Q=y
++# CONFIG_STMMAC_SELFTESTS is not set
++# CONFIG_DWMAC_DWC_QOS_ETH is not set
++# CONFIG_DWMAC_GENERIC is not set
++# CONFIG_DWMAC_ANARION is not set
++# CONFIG_DWMAC_INGENIC is not set
++# CONFIG_DWMAC_IPQ806X is not set
++# CONFIG_DWMAC_LPC18XX is not set
++# CONFIG_DWMAC_MEDIATEK is not set
++# CONFIG_DWMAC_MESON is not set
++# CONFIG_DWMAC_QCOM_ETHQOS is not set
++# CONFIG_DWMAC_ROCKCHIP is not set
++# CONFIG_DWMAC_RZN1 is not set
++# CONFIG_DWMAC_SOCFPGA is not set
++# CONFIG_DWMAC_STARFIVE is not set
++# CONFIG_DWMAC_STI is not set
++# CONFIG_DWMAC_STM32 is not set
++# CONFIG_DWMAC_SUNXI is not set
++# CONFIG_DWMAC_SUN8I is not set
++# CONFIG_DWMAC_IMX8 is not set
++# CONFIG_DWMAC_INTEL_PLAT is not set
++# CONFIG_DWMAC_LOONGSON1 is not set
++# CONFIG_DWMAC_TEGRA is not set
++# CONFIG_DWMAC_VISCONTI is not set
++# CONFIG_DWMAC_INTEL is not set
++# CONFIG_DWMAC_LOONGSON is not set
++# CONFIG_DWMAC_MOTORCOMM is not set
++# CONFIG_STMMAC_PCI is not set

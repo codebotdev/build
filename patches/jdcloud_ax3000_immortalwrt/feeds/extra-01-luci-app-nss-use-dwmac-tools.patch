@@ -1,0 +1,29 @@
+Subject: [PATCH] luci-app-nss: depend on the AX3000 DWMAC runtime
+
+This tree provides nss-tools-dwmac for AX3000, not the generic nss-tools
+package referenced by the upstream other-platform branch. Keep the UI
+selectable only where its runtime is supported, and use that runtime
+directly so dependency scanning never references a missing package.
+
+--- a/feeds/extra/luci-app-nss/Makefile
++++ b/feeds/extra/luci-app-nss/Makefile
+@@ -2,7 +2,7 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=luci-app-nss
+-PKG_RELEASE:=23
++PKG_RELEASE:=24
+ PKG_LICENSE:=GPL-2.0-only
+ PKG_BUILD_DEPENDS:=luci-base/host
+ PKG_FILE_DEPENDS:=$(CURDIR)/po
+@@ -14,8 +14,8 @@
+   CATEGORY:=LuCI
+   SUBMENU:=3. Applications
+   TITLE:=LuCI status page for NSS offloading
+-  DEPENDS:=+luci-base +TARGET_qualcommax_ipq50xx:nss-tools-dwmac \
+-	+!TARGET_qualcommax_ipq50xx:nss-tools
++  DEPENDS:=@TARGET_qualcommax_ipq50xx_DEVICE_jdcloud_ax3000 \
++	+luci-base +nss-tools-dwmac
+   PKGARCH:=all
+ endef
+ 

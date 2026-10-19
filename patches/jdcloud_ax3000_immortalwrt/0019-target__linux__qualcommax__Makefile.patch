@@ -1,0 +1,12 @@
+diff --git a/target/linux/qualcommax/Makefile b/target/linux/qualcommax/Makefile
+index 380c361990..ea26128f22 100644
+--- a/target/linux/qualcommax/Makefile
++++ b/target/linux/qualcommax/Makefile
+@@ -16,6 +16,6 @@ DEFAULT_PACKAGES += \
+ 	kmod-leds-gpio kmod-gpio-button-hotplug \
+ 	kmod-qca-nss-dp kmod-ath11k-ahb wpad-openssl \
+ 	uboot-envtools losetup \
+-	automount autocore luci-app-cpufreq
++	automount autocore
+ 
+ $(eval $(call BuildTarget))

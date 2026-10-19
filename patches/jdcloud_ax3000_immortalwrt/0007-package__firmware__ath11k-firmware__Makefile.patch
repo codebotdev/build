@@ -1,0 +1,23 @@
+diff --git a/package/firmware/ath11k-firmware/Makefile b/package/firmware/ath11k-firmware/Makefile
+index 0ef80b3719..52a6f65fb2 100644
+--- a/package/firmware/ath11k-firmware/Makefile
++++ b/package/firmware/ath11k-firmware/Makefile
+@@ -79,12 +79,16 @@ define Build/Clean
+ 		$(BUILD_DIR)/$(ATH11K_LEGACY_FW_SUBDIR)
+ endef
+ 
++ifneq ($(CONFIG_PACKAGE_ath11k-firmware-ipq5018-qcn6122),)
++$(eval $(call Download,ath11k-legacy-firmware))
++endif
++
+ define Build/Prepare
+-	$(eval $(call Download,ath11k-legacy-firmware))
+-	
+ 	$(call Build/Prepare/Default,)
+ 
++ifneq ($(CONFIG_PACKAGE_ath11k-firmware-ipq5018-qcn6122),)
+ 	$(TAR) -C $(BUILD_DIR) -xf $(DL_DIR)/$(ATH11K_LEGACY_FW_SOURCE)
++endif
+ endef
+ 
+ define Build/Compile

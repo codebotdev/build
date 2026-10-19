@@ -1,0 +1,22 @@
+diff --git a/target/linux/generic/pending-6.12/711-03-net-dsa-qca8k-add-support-for-port_change_master.patch b/target/linux/generic/pending-6.12/711-03-net-dsa-qca8k-add-support-for-port_change_master.patch
+index 25c6ae3f78..f1ed6c0ca3 100644
+--- a/target/linux/generic/pending-6.12/711-03-net-dsa-qca8k-add-support-for-port_change_master.patch
++++ b/target/linux/generic/pending-6.12/711-03-net-dsa-qca8k-add-support-for-port_change_master.patch
+@@ -26,7 +26,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+ 
+ --- a/drivers/net/dsa/qca/qca8k-8xxx.c
+ +++ b/drivers/net/dsa/qca/qca8k-8xxx.c
+-@@ -1750,6 +1750,117 @@ qca8k_get_tag_protocol(struct dsa_switch
++@@ -1760,6 +1760,117 @@ qca8k_get_tag_protocol(struct dsa_switch
+  	return DSA_TAG_PROTO_QCA;
+  }
+  
+@@ -144,7 +144,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+  static void
+  qca8k_conduit_change(struct dsa_switch *ds, const struct net_device *conduit,
+  		     bool operational)
+-@@ -2039,8 +2150,9 @@ static const struct dsa_switch_ops qca8k
++@@ -2049,8 +2160,9 @@ static const struct dsa_switch_ops qca8k
+  	.port_vlan_del		= qca8k_port_vlan_del,
+  	.phylink_get_caps	= qca8k_phylink_get_caps,
+  	.get_phy_flags		= qca8k_get_phy_flags,

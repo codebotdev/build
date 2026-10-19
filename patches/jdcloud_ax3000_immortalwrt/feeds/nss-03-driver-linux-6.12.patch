@@ -1,0 +1,21 @@
+--- /dev/null
++++ b/feeds/nss/qca-nss-drv/patches/9999-linux-6.12.patch
+@@ -0,0 +1,18 @@
++Subject: [PATCH] nss: allow skb reuse on the Linux 6.12 layout
++
++The 6.12 tail boundary and shinfo dataref boundary preserve the same
++allocation state. Keep the page_pool, zerocopy and skb extensions guards.
++Linux 6.12.103 already provides skbuff_ref.h and alloc_netdev_dummy().
++
++--- a/nss_core.c
+++++ b/nss_core.c
++@@ -55,7 +55,8 @@
++  *
++  * Tested on: 3.4, 3.10, 3.14, 3.18, 4.4, 5.4, 6.6, 6.12 and 6.18
++  */
++-#if !((LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 19, 0)) || \
+++#if !((LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 13, 0)) || \
+++      (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 19, 0)) || \
++       (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(7, 4, 0)))
++ #error "Check skb recycle code in this file to match Linux version"
++ #endif

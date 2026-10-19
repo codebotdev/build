@@ -1,0 +1,77 @@
+From: jdcipq maintainers
+Subject: [PATCH] wifi: ath11k: fix QCN6122 NSS register base and window
+
+QCN6122 uses the WCN6750 AHB PCI operations and maps DP registers through
+the first static BAR window. The NSS ring setup asks the HIF for a window
+offset, but the QCN6122 HIF does not implement that callback. Consequently
+NSS receives BAR plus the unwindowed UMAC offset instead of the mapped
+register address used by the host.
+
+Reuse the same window selector as the host AHB accessors when exporting
+QCN6122 ring addresses to NSS. Keep directly accessible offsets unchanged.
+
+The hybrid AHB resource path also skips the normal mem_pa assignment. QMI
+maps the real BAR for host access but never saves its physical address for
+NSS. Save the validated QMI BAR alongside the mapping so NSS receives BAR
+plus the translated offset, not zero plus the offset. Reject an unset NSS
+register base before allocating or sending the SoC init message, and log
+the QMI BAR and NSS base to make the next hardware test verifiable.
+
+The first window-only test still trapped at the same firmware PC, with A4
+changing from 0x00a46000 to 0x000c6000. This is consistent with translating
+the offset while still omitting the BAR. Hardware retesting remains needed.
+
+--- a/drivers/net/wireless/ath/ath11k/ahb.c
++++ b/drivers/net/wireless/ath/ath11k/ahb.c
+@@ -771,2 +771,17 @@
++static u32 ath11k_ahb_get_window_offset_qcn6122(struct ath11k_base *ab,
++					     u32 offset)
++{
++	u32 window_start;
++
++	if (offset < ATH11K_PCI_WINDOW_START)
++		return offset;
++
++	window_start = ath11k_ahb_get_window_start_wcn6750(ab, offset);
++	if (window_start)
++		offset = window_start + (offset & ATH11K_PCI_WINDOW_RANGE_MASK);
++
++	return offset;
++}
++
+ static void ath11k_ahb_config_static_window_qcn6122(struct ath11k_base *ab)
+ {
+@@ -830,2 +845,3 @@ static const struct ath11k_hif_ops ath11k_ahb_hif_ops_qcn6122 = {
+-	.config_static_window = ath11k_ahb_config_static_window_qcn6122,
++	.config_static_window = ath11k_ahb_config_static_window_qcn6122,
++	.get_window_offset = ath11k_ahb_get_window_offset_qcn6122,
+ };
+--- a/drivers/net/wireless/ath/ath11k/qmi.c
++++ b/drivers/net/wireless/ath/ath11k/qmi.c
+@@ -2189,4 +2189,7 @@ static int ath11k_qmi_request_device_info(struct ath11k_base *ab)
+
+-	ab->mem = bar_addr_va;
+-	ab->mem_len = resp.bar_size;
++	ab->mem = bar_addr_va;
++	ab->mem_pa = resp.bar_addr;
++	ab->mem_len = resp.bar_size;
++	ath11k_info(ab, "QMI BAR mapped: pa=%pad size=0x%lx\n",
++		    &ab->mem_pa, ab->mem_len);
+
+--- a/drivers/net/wireless/ath/ath11k/nss.c
++++ b/drivers/net/wireless/ath/ath11k/nss.c
+@@ -4362,4 +4362,11 @@ static int ath11k_nss_init(struct ath11k_base *ab)
+
+-	if (target_type == ATH11K_WIFILI_TARGET_TYPE_UNKNOWN)
+-		return -ENOTSUPP;
++	if (target_type == ATH11K_WIFILI_TARGET_TYPE_UNKNOWN)
++		return -ENOTSUPP;
++
++	if (!ab->mem_pa) {
++		ath11k_err(ab, "NSS init rejected: missing register physical base\n");
++		return -EINVAL;
++	}
++	ath11k_info(ab, "NSS register base: pa=%pad target_type=%u\n",
++		    &ab->mem_pa, target_type);
+
+--

@@ -1,0 +1,12 @@
+diff --git a/Config.in b/Config.in
+index 051d3264e2..f2b12f74a4 100644
+--- a/Config.in
++++ b/Config.in
+@@ -38,3 +38,7 @@ source "target/sdk/Config.in"
+ source "target/toolchain/Config.in"
+ 
+ source "tmp/.config-package.in"
++
++if TARGET_qualcommax
++source "config/Config-ipq.in"
++endif

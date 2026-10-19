@@ -1,0 +1,12 @@
+diff --git a/target/linux/qualcommax/config-6.12 b/target/linux/qualcommax/config-6.12
+index d0dd32a0aa..16966cff1f 100644
+--- a/target/linux/qualcommax/config-6.12
++++ b/target/linux/qualcommax/config-6.12
+@@ -626,3 +626,7 @@ CONFIG_ZONE_DMA32=y
+ CONFIG_ZSTD_COMMON=y
+ CONFIG_ZSTD_COMPRESS=y
+ CONFIG_ZSTD_DECOMPRESS=y
++
++# CONFIG_ALLOC_SKB_PAGE_FRAG_DISABLE is not set
++# CONFIG_DEBUG_OBJECTS_SKBUFF is not set
++# CONFIG_SKB_FAST_RECYCLABLE_DEBUG_ENABLE is not set

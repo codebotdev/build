@@ -1,0 +1,28 @@
+From: jdcipq maintainers
+Subject: [PATCH] wifi: ath11k: fix IPQ5018 512M RX callbacks
+
+The 512M memory profile adds RX descriptor offset and header reconstruction
+callbacks. IPQ5018 uses the QCN9074 RX descriptor layout, but its operations
+table does not initialize any of these callbacks. QCN6122 also uses
+ipq5018_ops, so received multicast traffic can call the missing header field
+validation callback and panic at address zero.
+
+Initialize all callbacks with the QCN9074 implementations, matching the rest
+of the IPQ5018 RX descriptor operations.
+
+--- a/drivers/net/wireless/ath/ath11k/hw.c
++++ b/drivers/net/wireless/ath/ath11k/hw.c
+@@ -1485,6 +1485,13 @@ const struct ath11k_hw_ops ipq5018_ops =
+ 	.rx_desc_mpdu_start_addr2 = ath11k_hw_ipq9074_rx_desc_mpdu_start_addr2,
+ 	.get_ring_selector = ath11k_hw_ipq8074_get_tcl_ring_selector,
+ 	.rx_desc_get_hal_mpdu_len = ath11k_hw_qcn9074_rx_desc_get_hal_mpdu_len,
++#ifdef CPTCFG_ATH11K_MEM_PROFILE_512M
++	.rx_desc_get_offset = ath11k_hw_qcn9074_rx_desc_get_offset,
++#endif
++	.rx_desc_get_mpdu_frame_ctl = ath11k_hw_qcn9074_rx_desc_get_mpdu_frame_ctl,
++	.rx_desc_dot11_hdr_fields_valid = ath11k_hw_qcn9074_rx_desc_dot11_hdr_fields_valid,
++	.rx_desc_get_dot11_hdr = ath11k_hw_qcn9074_rx_desc_get_dot11_hdr,
++	.rx_desc_get_crypto_header = ath11k_hw_qcn9074_rx_desc_get_crypto_hdr,
+ };
+ 
+ #define ATH11K_TX_RING_MASK_0 BIT(0)

@@ -263,6 +263,32 @@ class SourceCustomizationTests(unittest.TestCase):
         self.assertEqual((self.source / '.hidden').read_text(), 'hidden config')
         self.assertEqual((self.source / 'nested/hook').stat().st_mode & 0o777, 0o755)
 
+    def test_feed_patches_apply_only_after_update(self):
+        patches = self.project / 'patches/demo'
+        (patches / 'feeds').mkdir(parents=True)
+        (self.source / 'source.txt').write_text('old\n')
+        (patches / '0001-source.patch').write_text(
+            '--- a/source.txt\n+++ b/source.txt\n@@ -1 +1 @@\n-old\n+new\n')
+        (patches / 'feeds/0001-feed.patch').write_text(
+            '--- a/feeds/demo/Makefile\n+++ b/feeds/demo/Makefile\n'
+            '@@ -1 +1 @@\n-old\n+new\n')
+        subprocess.run(['git', 'init', '-q', str(self.source)], check=True)
+        self.env['PATCHES_NAME'] = 'demo'
+        self.run_script('apply-openwrt-patches.sh')
+        feed = self.source / 'feeds/demo'
+        feed.mkdir(parents=True)
+        subprocess.run(['git', 'init', '-q', str(feed)], check=True)
+        (feed / 'Makefile').write_text('old\n')
+        self.env['PATCH_PHASE'] = 'feeds'
+        self.run_script('apply-openwrt-patches.sh')
+        self.assertEqual((feed / 'Makefile').read_text(), 'new\n')
+        self.assertEqual((self.source / 'source.txt').read_text(), 'new\n')
+
+    def test_existing_patch_sets_need_no_feed_directory(self):
+        (self.project / 'patches/demo').mkdir(parents=True)
+        self.env.update(PATCHES_NAME='demo', PATCH_PHASE='feeds')
+        self.run_script('apply-openwrt-patches.sh')
+
     def test_overrides_can_be_used_without_patches(self):
         overrides = self.project / 'overrides/demo'
         overrides.mkdir(parents=True)

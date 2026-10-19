@@ -1,0 +1,147 @@
+diff --git a/package/kernel/mac80211/ath.mk b/package/kernel/mac80211/ath.mk
+index d7c58a433e..6961343419 100644
+--- a/package/kernel/mac80211/ath.mk
++++ b/package/kernel/mac80211/ath.mk
+@@ -14,7 +14,13 @@ PKG_CONFIG_DEPENDS += \
+ 	CONFIG_ATH10K_THERMAL \
+ 	CONFIG_ATH11K_THERMAL \
+ 	CONFIG_ATH12K_THERMAL \
+-	CONFIG_ATH_USER_REGD
++	CONFIG_ATH_USER_REGD \
++	CONFIG_ATH11K_DEBUGFS_STA \
++	CONFIG_ATH11K_DEBUGFS_HTT_STATS \
++	CONFIG_ATH11K_MEM_PROFILE_1G \
++	CONFIG_ATH11K_MEM_PROFILE_512M \
++	CONFIG_ATH11K_MEM_PROFILE_256M \
++	CONFIG_ATH11K_NSS_SUPPORT
+ 
+ ifdef CONFIG_PACKAGE_MAC80211_DEBUGFS
+   config-y += \
+@@ -62,6 +68,13 @@ config-$(CONFIG_ATH10K_THERMAL) += ATH10K_THERMAL
+ config-$(CONFIG_ATH11K_THERMAL) += ATH11K_THERMAL
+ config-$(CONFIG_ATH12K_THERMAL) += ATH12K_THERMAL
+ 
++config-$(CONFIG_ATH11K_MEM_PROFILE_1G) += ATH11K_MEM_PROFILE_1G
++config-$(CONFIG_ATH11K_MEM_PROFILE_512M) += ATH11K_MEM_PROFILE_512M
++config-$(CONFIG_ATH11K_MEM_PROFILE_256M) += ATH11K_MEM_PROFILE_256M
++config-$(CONFIG_ATH11K_NSS_SUPPORT) += ATH11K_NSS_SUPPORT
++config-$(CONFIG_ATH11K_DEBUGFS_STA) += ATH11K_DEBUGFS_STA
++config-$(CONFIG_ATH11K_DEBUGFS_HTT_STATS) += ATH11K_DEBUGFS_HTT_STATS
++
+ config-$(call config_package,ath9k-htc) += ATH9K_HTC
+ config-$(call config_package,ath10k,regular) += ATH10K ATH10K_PCI
+ config-$(call config_package,ath10k-sdio,sdio) += ATH10K ATH10K_SDIO
+@@ -338,9 +351,19 @@ define KernelPackage/ath11k
+   TITLE:=Qualcomm 802.11ax wireless chipset support (common code)
+   URL:=https://wireless.wiki.kernel.org/en/users/drivers/ath11k
+   DEPENDS+= +kmod-ath +@DRIVER_11AC_SUPPORT +@DRIVER_11AX_SUPPORT \
+-  +kmod-crypto-michael-mic +ATH11K_THERMAL:kmod-hwmon-core \
+-  +ATH11K_THERMAL:kmod-thermal +kmod-qcom-qmi-helpers
++  +kmod-qcom-qmi-helpers +kmod-crypto-michael-mic +ATH11K_THERMAL:kmod-hwmon-core +ATH11K_THERMAL:kmod-thermal \
++  +ATH11K_NSS_SUPPORT:kmod-qca-nss-drv \
++  +@(ATH11K_NSS_SUPPORT):NSS_DRV_WIFIOFFLOAD_ENABLE \
++  +@(ATH11K_NSS_SUPPORT):NSS_DRV_WIFI_EXT_VDEV_ENABLE
+   FILES:=$(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath11k/ath11k.ko
++ifdef CONFIG_ATH11K_NSS_SUPPORT
++ifeq ($(CONFIG_PACKAGE_nss-tools-dwmac),y)
++  # The NSS service loads radios after arming both GMACs and tuning pbuf.
++else
++  AUTOLOAD:=$(call AutoProbe,ath11k)
++  MODPARAMS.ath11k:=nss_offload=1 frame_mode=2
++endif
++endif
+ endef
+ 
+ define KernelPackage/ath11k/description
+@@ -348,6 +371,10 @@ This module adds support for Qualcomm Technologies 802.11ax family of
+ chipsets.
+ endef
+ 
++define KernelPackage/ath11k/conffiles
++/etc/config/pbuf
++endef
++
+ define KernelPackage/ath11k/config
+ 
+        config ATH11K_THERMAL
+@@ -355,6 +382,60 @@ define KernelPackage/ath11k/config
+                depends on PACKAGE_kmod-ath11k
+                default y if TARGET_qualcommax
+ 
++      config ATH11K_DEBUGFS_STA
++               bool "Enable ath11k station statistics"
++               depends on PACKAGE_kmod-ath11k
++               depends on PACKAGE_MAC80211_DEBUGFS && ATH11K_NSS_SUPPORT
++               default y
++               help
++                  Say Y to enable access to the station statistics via debugfs.
++
++      config ATH11K_DEBUGFS_HTT_STATS
++               bool "Enable ath11k HTT statistics"
++               depends on PACKAGE_kmod-ath11k
++               depends on PACKAGE_MAC80211_DEBUGFS && ATH11K_NSS_SUPPORT
++               default y
++               help
++                  Say Y to enable access to the HTT statistics via debugfs.
++
++       config ATH11K_NSS_SUPPORT
++               bool "Enable NSS WiFi offload"
++               depends on TARGET_qualcommax
++               select PACKAGE_kmod-qca-nss-ecm
++               default y if TARGET_qualcommax_ipq50xx_DEVICE_jdcloud_ax3000
++               help
++                  Say Y to enable NSS WiFi offload when building ath11k.
++                  This option is independent of kmod-ath11k to avoid a cycle
++                  through that package's conditional NSS driver dependencies.
++                  Ensure you enable feeds for NSS drivers.
++                  https://github.com/qosmio/nss-packages
++
++       choice
++            prompt "Memory Profile"
++            depends on PACKAGE_kmod-ath11k && ATH11K_NSS_SUPPORT
++            default ATH11K_MEM_PROFILE_512M if TARGET_qualcommax_ipq50xx_DEVICE_jdcloud_ax3000
++            default ATH11K_MEM_PROFILE_1G
++            help
++                  This option allows you to select the memory profile.
++                  It should correspond to the total RAM of your board.
++
++          config ATH11K_MEM_PROFILE_1G
++               bool "Use 1G memory profile"
++               help
++                  This allows configuring ath11k for boards with 1GB+ memory.
++
++          config ATH11K_MEM_PROFILE_512M
++               bool "Use 512MB memory profile"
++               help
++                  This allows configuring ath11k for boards with 512M memory.
++                  The default is 1GB if not selected
++
++          config ATH11K_MEM_PROFILE_256M
++               bool "Use 256MB memory profile"
++               help
++                  This allows configuring ath11k for boards with 256M memory.
++                  The default is 1GB if not selected
++       endchoice
+ endef
+ 
+ define KernelPackage/ath11k-ahb
+@@ -363,7 +444,9 @@ define KernelPackage/ath11k-ahb
+   URL:=https://wireless.wiki.kernel.org/en/users/drivers/ath11k
+   DEPENDS+= @TARGET_qualcommax +kmod-ath11k +kmod-qrtr-smd
+   FILES:=$(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath11k/ath11k_ahb.ko
++ifneq ($(CONFIG_PACKAGE_nss-tools-dwmac),y)
+   AUTOLOAD:=$(call AutoProbe,ath11k_ahb)
++endif
+ endef
+ 
+ define KernelPackage/ath11k-ahb/description
+@@ -377,7 +460,9 @@ define KernelPackage/ath11k-pci
+   URL:=https://wireless.wiki.kernel.org/en/users/drivers/ath11k
+   DEPENDS+= @PCI_SUPPORT +kmod-qrtr-mhi +kmod-ath11k
+   FILES:=$(PKG_BUILD_DIR)/drivers/net/wireless/ath/ath11k/ath11k_pci.ko
++ifneq ($(CONFIG_PACKAGE_nss-tools-dwmac),y)
+   AUTOLOAD:=$(call AutoProbe,ath11k_pci)
++endif
+ endef
+ 
+ define KernelPackage/ath11k-pci/description

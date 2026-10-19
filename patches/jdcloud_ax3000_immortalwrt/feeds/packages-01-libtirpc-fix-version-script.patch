@@ -1,0 +1,63 @@
+diff --git a/feeds/packages/libs/libtirpc/Makefile b/feeds/packages/libs/libtirpc/Makefile
+index 0f77604..a126087 100644
+--- a/feeds/packages/libs/libtirpc/Makefile
++++ b/feeds/packages/libs/libtirpc/Makefile
+@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=libtirpc
+ PKG_VERSION:=1.3.7
+-PKG_RELEASE:=2
++PKG_RELEASE:=3
+ 
+ PKG_SOURCE_URL:=@SF/libtirpc
+ PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
+diff --git a/feeds/packages/libs/libtirpc/patches/010-fix-version-script-generation.patch b/feeds/packages/libs/libtirpc/patches/010-fix-version-script-generation.patch
+new file mode 100644
+index 0000000..6e05706
+--- /dev/null
++++ b/feeds/packages/libs/libtirpc/patches/010-fix-version-script-generation.patch
+@@ -0,0 +1,44 @@
++From: ImmortalWrt local fixes
++Subject: [PATCH] libtirpc: use config.status to generate the version script
++
++configure already registers src/libtirpc.map in AC_CONFIG_FILES.
++The duplicate sed recipe has its search placeholders substituted by
++config.status, producing empty regular expressions with GSS disabled.
++Remove it from both the automake source and the shipped Makefile.in.
++
++--- a/src/Makefile.am
+++++ b/src/Makefile.am
++@@ -17,15 +17,6 @@
++
++ libtirpc_la_LDFLAGS = @LDFLAG_NOUNDEFINED@ -no-undefined @PTHREAD_LIBS@
++ libtirpc_la_LDFLAGS += -version-info @LT_VERSION_INFO@
++-
++-# Generate version script from template
++-libtirpc.map: $(srcdir)/libtirpc.map.in
++-	$(AM_V_GEN)$(SED) \
++-		-e 's|@GSS_SYMBOLS@|$(GSS_SYMBOLS)|g' \
++-		-e 's|@GSS_SYMBOLS_031@|$(GSS_SYMBOLS_031)|g' \
++-		-e 's|@DES_SYMBOLS@|$(DES_SYMBOLS)|g' \
++-		-e 's|@RPCDB_SYMBOLS@|$(RPCDB_SYMBOLS)|g' \
++-		< $(srcdir)/libtirpc.map.in > $@ || rm -f $@
++
++ libtirpc_la_SOURCES = auth_none.c auth_unix.c authunix_prot.c \
++         binddynport.c bindresvport.c \
++--- a/src/Makefile.in
+++++ b/src/Makefile.in
++@@ -1529,15 +1529,6 @@
++ .PRECIOUS: Makefile
++
++
++-# Generate version script from template
++-libtirpc.map: $(srcdir)/libtirpc.map.in
++-	$(AM_V_GEN)$(SED) \
++-		-e 's|@GSS_SYMBOLS@|$(GSS_SYMBOLS)|g' \
++-		-e 's|@GSS_SYMBOLS_031@|$(GSS_SYMBOLS_031)|g' \
++-		-e 's|@DES_SYMBOLS@|$(DES_SYMBOLS)|g' \
++-		-e 's|@RPCDB_SYMBOLS@|$(RPCDB_SYMBOLS)|g' \
++-		< $(srcdir)/libtirpc.map.in > $@ || rm -f $@
++-
++ # Tell versions [3.59,3.63) of GNU make to not export all variables.
++ # Otherwise a system limit (for SysV at least) may be exceeded.
++ .NOEXPORT:

@@ -1,0 +1,199 @@
+#!/bin/sh /etc/rc.common
+# AX3000 NSS startup: configure the DSA tagger before netifd, then hand
+# both GMACs to NSS once the live network is ready.
+START=19
+USE_PROCD=1
+
+NSSOFF=/sys/module/ath11k/parameters/nss_offload
+FRAMEMODE=/sys/module/ath11k/parameters/frame_mode
+
+wifi_load() {
+	local offload="$1"
+
+	modprobe ath11k 2>/dev/null
+	[ -w $NSSOFF ] && echo "$offload" > $NSSOFF
+	# The firmware carries Wi-Fi as ethernet frames. ath11k defaults to
+	# native Wi-Fi and reads the mode when a radio registers; the
+	# autoload entry that would pass frame_mode=2 does not exist here,
+	# because this service loads the module. In native mode the radios
+	# come up, stations associate and the 4-way handshake never
+	# completes (measured on a GL-B3000). Same mode on the host path,
+	# as these boards have always run it.
+	[ -w $FRAMEMODE ] && echo 2 > $FRAMEMODE
+	# No pbuf tuning here: the NSS core is not up at this point in boot, so
+	# the driver refuses the sysctl with -EAGAIN (feed patch 0142) and the
+	# pools would silently stay at their defaults. nss-dwmac-up sizes them
+	# after the arm, on every path.
+	modprobe ath11k_ahb 2>/dev/null
+	modprobe ath11k_pci 2>/dev/null
+}
+
+. "${IPKG_INSTROOT}/lib/functions.sh"
+
+# Keep qca8k bound and switch its CPU tag to the 802.1Q format NSS parses.
+# This runs before netifd because the conduit and user ports must be down
+# while changing the tagger. DSA continues to own all LAN user ports.
+switch_to_8021q() {
+	local trunk tagging cur want up
+
+	nss_dsa_conduit
+	trunk="$NSS_CONDUIT"
+	if [ -z "$trunk" ]; then
+		logger -p user.err -t nss "no DSA conduit; refusing NSS takeover"
+		return 1
+	fi
+	tagging="/sys/class/net/$trunk/dsa/tagging"
+	cur="$(cat "$tagging" 2>/dev/null)"
+	if [ -z "$cur" ]; then
+		logger -t nss "topology dsa: $trunk is not a DSA conduit, nothing to switch"
+		return 1
+	fi
+	want="$(nss_dsa_tagger "$trunk")" || {
+		logger -t nss "topology dsa: no tag_8021q tagger for the switch behind $trunk (driver $want) - the firmware will not parse this traffic"
+		return 1
+	}
+	[ "$cur" = "$want" ] && return 0
+	# The kernel refuses the switch while the conduit or any user port is
+	# up. netifd has not run yet, but preinit brings the lan ports up for
+	# the failsafe window and can leave them admin-up (measured: lan1 up
+	# at 6 s, the write at 11 s fails). The user ports are the conduit's
+	# uppers in sysfs; take them and the conduit down first - netifd
+	# configures them from scratch a moment later anyway.
+	for up in "/sys/class/net/$trunk"/upper_*; do
+		[ -e "$up" ] || continue
+		ip link set "${up##*/upper_}" down 2>/dev/null
+	done
+	ip link set "$trunk" down 2>/dev/null
+	if echo "$want" > "$tagging" 2>/dev/null; then
+		logger -t nss "topology dsa: $trunk tagger $cur -> $want"
+		return 0
+	fi
+	logger -t nss "topology dsa: could not switch $trunk tagger from $cur to $want (ports up? kernel without the $want tag driver?) - the firmware will not parse this traffic"
+	return 1
+}
+
+start_service() {
+	local wifi_offload topology
+
+	. /lib/nss/functions.sh
+
+	topology="$(uci -q get nss.general.topology)"
+	if [ "$(board_name)" = "jdcloud,ax3000" ]; then
+		if [ "$topology" != "dsa" ] || [ ! -r /sys/class/net/eth1/dsa/tagging ]; then
+			logger -p user.err -t nss "AX3000 requires the eth1 DSA conduit; refusing NSS takeover"
+			wifi_load 0
+			return 1
+		fi
+	fi
+	if [ "$topology" != "dsa" ] || ! switch_to_8021q; then
+		logger -p user.err -t nss "DSA tagger setup failed; refusing NSS takeover"
+		wifi_load 0
+		return 1
+	fi
+
+	wifi_offload="$(uci -q get nss.general.wifi_offload)"
+	[ "$wifi_offload" = "1" ] || wifi_offload=0
+
+	if [ "$(uci -q get nss.general.enabled)" = "0" ]; then
+		logger -t nss "NSS bring-up disabled via uci (nss.general.enabled=0), staying on the host stack"
+		wifi_load 0
+		return 0
+	fi
+
+	# Load the glue and the core driver now, arm later: qca-nss-drv's
+	# probe defers until a port is armed, so loading it here is inert.
+	# The ARMING is done by nss-dwmac-up on a LIVE trunk - arming a down
+	# eth0 at this point in boot brings the firmware up, but its GMAC
+	# then never delivers a single ingress frame (E124/E125). Do NOT
+	# load qca-nss-vlan here either: vlan-mgr resolves the trunk's NSS
+	# interface number when it sees a VLAN netdev register, and that
+	# number only exists once the takeover has run - loaded before the
+	# arm, the registration fails silently and the firmware drops all
+	# tagged ingress (E126). nss-dwmac-up loads it after the arm; the
+	# netdevice notifier replays NETDEV_REGISTER for every netdev that
+	# already exists, so netifd's eth0.<vid> are picked up regardless of
+	# who came first.
+	# Read both GMAC/netdev mappings from the device tree. DSA stays bound.
+	local ifmap
+	ifmap="$(nss_gmac_netdevs | tr '\n' ',')"
+	ifmap="${ifmap%,}"
+	logger -t nss "topology dsa: GMAC map read off the board: $ifmap"
+	insmod "/lib/modules/$(uname -r)/qca-dwmac-nss.ko" ifmap="$ifmap" 2>/dev/null ||
+		modprobe qca-dwmac-nss 2>/dev/null
+	[ -w /sys/kernel/debug/qca-dwmac-nss/ifmap ] &&
+		echo "$ifmap" > /sys/kernel/debug/qca-dwmac-nss/ifmap
+	# nss.general.fw_csum: let the firmware checksum and segment what the
+	# router itself sends (the glue's fw_csum parameter, off by default).
+	# The glue reads it when it starts a port, and no port starts before
+	# nss-dwmac-up arms the firmware, so it is in time here; set by hand
+	# later it needs the port taken down and up, which closes every DSA
+	# port on it. Through sysfs, for the same reason as the map above.
+	# Unset leaves the parameter alone.
+	local fw_csum
+	fw_csum="$(uci -q get nss.general.fw_csum)"
+	case "$fw_csum" in
+	0|1)
+		if [ -w /sys/module/qca_dwmac_nss/parameters/fw_csum ]; then
+			echo "$fw_csum" > /sys/module/qca_dwmac_nss/parameters/fw_csum
+			[ "$fw_csum" = 0 ] ||
+				logger -t nss "fw_csum=1: the firmware checksums and segments the router's own TX"
+		fi
+		;;
+	'')
+		;;
+	*)
+		logger -p user.warn -t nss "nss.general.fw_csum is '$fw_csum', expected 0 or 1 - left alone"
+		;;
+	esac
+	modprobe qca-nss-drv 2>/dev/null
+	# The NSS qdiscs and the IGS action depend on qca-nss-drv, so they must
+	# not sit in /etc/modules.d: kmodloader would pull the driver in at
+	# boot, before any port is armed. Load them here instead, once the
+	# driver is up, so `tc ... nsstbl` works without a modprobe by hand.
+	local m
+	for m in qca-nss-qdisc act_nssmirred; do
+		[ -e "/lib/modules/$(uname -r)/$m.ko" ] && modprobe "$m" 2>/dev/null
+	done
+
+	# Optional descriptor-ring placement override, before the NSS core boots.
+	local memcfg want
+	want="$(uci -q get nss.general.meminfo)" || want=''
+	[ "$want" != default ] || want=''
+	if [ -n "$want" ]; then
+		memcfg="$(cat /sys/module/qca_nss_drv/parameters/meminfo_user_config)" || { wifi_load 0; return 1; }
+		[ -n "$memcfg" ] ||
+			printf '%s\n' "$want" > /sys/module/qca_nss_drv/parameters/meminfo_user_config || { wifi_load 0; return 1; }
+		logger -t nss "GMAC descriptor rings: meminfo_user_config=${memcfg:-$want}"
+	fi
+
+	# Wi-Fi offload has to wait for the firmware, host Wi-Fi does not.
+	# ath11k registers the wifili interface at module load and checks the
+	# NSS core state right there: nss_cmn_get_state() != INITIALIZED makes
+	# ath11k_nss_setup() fail with -EINVAL ("nss state in default init
+	# state"), the radio falls back to the host path for the rest of the
+	# boot, and nothing retries. The core is only booted by the arm in
+	# nss-dwmac-up, which runs after netifd - about 14 s later - so loading
+	# ath11k here with nss_offload=1 loses that race every time. It is the
+	# same class of failure as the other three orderings above, with the
+	# same silent symptom: everything looks up, the diag line even says
+	# "Wi-Fi on the NSS path", and the offload is simply not there.
+	# On multipd IPQ5018 a later reload is not an option - rmmod ath11k_ahb
+	# does not clean up the Q6 and the radios never come back - so this is
+	# load-once-in-the-right-place, not load-and-retry.
+	if [ "$wifi_offload" = "1" ]; then
+		logger -t nss "Wi-Fi offload requested: deferring ath11k to nss-dwmac-up (after the arm)"
+	else
+		wifi_load 0
+	fi
+
+	procd_open_instance nss-up
+	procd_set_param command /usr/sbin/nss-dwmac-up
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+stop_service() {
+	echo "The NSS plane cannot be detached at runtime; reboot to return to the host stack."
+	echo "To keep it off across reboots: uci set nss.general.enabled='0'; uci commit nss"
+}

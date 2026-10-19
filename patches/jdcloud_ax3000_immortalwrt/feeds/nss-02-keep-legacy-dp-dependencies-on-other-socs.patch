@@ -1,0 +1,30 @@
+diff --git a/feeds/nss/qca-nss-clients/Makefile b/feeds/nss/qca-nss-clients/Makefile
+index 2229af0..126cfdd 100644
+--- a/feeds/nss/qca-nss-clients/Makefile
++++ b/feeds/nss/qca-nss-clients/Makefile
+@@ -116,8 +116,8 @@ define KernelPackage/qca-nss-drv-bridge-mgr
+   DEPENDS:=@(TARGET_qualcommax_ipq807x||TARGET_qualcommax_ipq60xx) \
+ 	   +kmod-qca-nss-drv \
+ 	   +@NSS_DRV_BRIDGE_ENABLE \
+-	   +TARGET_qualcommax_ipq807x:kmod-qca-ppe-nss \
+-	   +TARGET_qualcommax_ipq60xx:kmod-qca-ppe-nss
++	   +TARGET_qualcommax_ipq807x:kmod-qca-nss-dp \
++	   +TARGET_qualcommax_ipq60xx:kmod-qca-nss-dp
+   FILES:=$(PKG_BUILD_DIR)/bridge/qca-nss-bridge-mgr.ko
+ endef
+ 
+diff --git a/feeds/nss/qca-nss-drv/Makefile b/feeds/nss/qca-nss-drv/Makefile
+index db9e27f..6be293d 100644
+--- a/feeds/nss/qca-nss-drv/Makefile
++++ b/feeds/nss/qca-nss-drv/Makefile
+@@ -90,8 +90,8 @@ define KernelPackage/qca-nss-drv
+   # qca-ppe-nss (built on the PPE/EDMA stack), ipq50xx from qca-dwmac-nss
+   # (built on dwmac-ipq5018), which has neither.
+   DEPENDS:=@(TARGET_ipq806x||TARGET_qualcommax) \
+-  				 +TARGET_qualcommax_ipq807x:kmod-qca-ppe-nss \
+-  				 +TARGET_qualcommax_ipq60xx:kmod-qca-ppe-nss \
++  				 +TARGET_qualcommax_ipq807x:kmod-qca-nss-dp \
++  				 +TARGET_qualcommax_ipq60xx:kmod-qca-nss-dp \
+   				 +TARGET_qualcommax_ipq50xx:kmod-qca-dwmac-nss \
+   				 +TARGET_qualcommax:nss-firmware
+   TITLE:=Kernel driver for NSS (core driver)

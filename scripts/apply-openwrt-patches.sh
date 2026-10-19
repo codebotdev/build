@@ -10,6 +10,14 @@ PATCHES_NAME=${PATCHES_NAME:-}
 [[ "$PATCHES_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die 'patches must be a folder name under ./patches'
 PATCH_DIR="$PROJECT_DIR/patches/$PATCHES_NAME"
 [[ -d "$PATCH_DIR" ]] || die "Patch set not found: $PATCH_DIR"
+case "${PATCH_PHASE:-source}" in
+    source) ;;
+    feeds)
+        PATCH_DIR="$PATCH_DIR/feeds"
+        [[ -d "$PATCH_DIR" ]] || { echo 'No feed patches selected'; exit 0; }
+        ;;
+    *) die 'PATCH_PHASE must be source or feeds' ;;
+esac
 mapfile -d '' -t patches < <(find "$PATCH_DIR" -maxdepth 1 -type f -name '*.patch' -print0 | sort -z)
 (( ${#patches[@]} > 0 )) || die "No .patch files in $PATCH_DIR"
 for patch in "${patches[@]}"; do

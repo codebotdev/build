@@ -1,0 +1,113 @@
+Subject: [PATCH] netfilter: keep kernel conntrack listeners separate from netlink
+
+ECM must not replace the single ctnetlink callback. Add a per-net atomic
+notifier chain for in-kernel observers, leaving expectation events and
+netlink error/retry handling untouched. Unregister waits for RCU readers.
+Account for kernel observers when caching events and in auto event mode.
+
+--- a/include/net/netns/conntrack.h
++++ b/include/net/netns/conntrack.h
+@@ -5,6 +5,7 @@
+ #include <linux/list.h>
+ #include <linux/list_nulls.h>
+ #include <linux/atomic.h>
++#include <linux/notifier.h>
+ #include <linux/workqueue.h>
+ #include <linux/netfilter/nf_conntrack_tcp.h>
+ #ifdef CONFIG_NF_CT_PROTO_DCCP
+@@ -97,6 +98,7 @@
+ struct netns_ct {
+ #ifdef CONFIG_NF_CONNTRACK_EVENTS
+ 	bool ecache_dwork_pending;
++	struct atomic_notifier_head nf_conntrack_event_chain;
+ #endif
+ 	u8			sysctl_log_invalid; /* Log invalid packets */
+ 	u8			sysctl_events;
+--- a/include/net/netfilter/nf_conntrack_ecache.h
++++ b/include/net/netfilter/nf_conntrack_ecache.h
+@@ -69,6 +69,13 @@
+ 				   const struct nf_ct_event_notifier *nb);
+ void nf_conntrack_unregister_notifier(struct net *net);
+ 
++/* Kernel observers must not occupy ctnetlink's single callback slot. */
++#define NF_CONNTRACK_HAS_KERNEL_NOTIFIER 1
++int nf_conntrack_register_kernel_notifier(struct net *net,
++					struct notifier_block *nb);
++int nf_conntrack_unregister_kernel_notifier(struct net *net,
++					  struct notifier_block *nb);
++
+ void nf_ct_deliver_cached_events(struct nf_conn *ct);
+ int nf_conntrack_eventmask_report(unsigned int eventmask, struct nf_conn *ct,
+ 				  u32 portid, int report);
+@@ -101,7 +108,8 @@
+ 	struct net *net = nf_ct_net(ct);
+ 	struct nf_conntrack_ecache *e;
+ 
+-	if (!rcu_access_pointer(net->ct.nf_conntrack_event_cb))
++	if (!rcu_access_pointer(net->ct.nf_conntrack_event_cb) &&
++	    !rcu_access_pointer(net->ct.nf_conntrack_event_chain.head))
+ 		return;
+ 
+ 	e = nf_ct_ecache_find(ct);
+--- a/net/netfilter/nf_conntrack_ecache.c
++++ b/net/netfilter/nf_conntrack_ecache.c
+@@ -127,7 +127,7 @@
+ static int __nf_conntrack_eventmask_report(struct nf_conntrack_ecache *e,
+ 					   const u32 events,
+ 					   const u32 missed,
+-					   const struct nf_ct_event *item)
++					   struct nf_ct_event *item)
+ {
+ 	struct net *net = nf_ct_net(item->ct);
+ 	struct nf_ct_event_notifier *notify;
+@@ -136,6 +136,10 @@
+ 
+ 	if (!((events | missed) & e->ctmask))
+ 		return 0;
++
++	/* Observer return values must not affect netlink delivery or retries. */
++	atomic_notifier_call_chain(&net->ct.nf_conntrack_event_chain,
++				   events | missed, item);
+ 
+ 	rcu_read_lock();
+ 
+@@ -282,6 +286,21 @@
+ 	/* synchronize_rcu() is called after netns pre_exit */
+ }
+ EXPORT_SYMBOL_GPL(nf_conntrack_unregister_notifier);
++
++int nf_conntrack_register_kernel_notifier(struct net *net,
++					struct notifier_block *nb)
++{
++	return atomic_notifier_chain_register(&net->ct.nf_conntrack_event_chain, nb);
++}
++EXPORT_SYMBOL_GPL(nf_conntrack_register_kernel_notifier);
++
++int nf_conntrack_unregister_kernel_notifier(struct net *net,
++					  struct notifier_block *nb)
++{
++	/* atomic_notifier_chain_unregister() waits for in-flight callbacks. */
++	return atomic_notifier_chain_unregister(&net->ct.nf_conntrack_event_chain, nb);
++}
++EXPORT_SYMBOL_GPL(nf_conntrack_unregister_kernel_notifier);
+ 
+ void nf_conntrack_ecache_work(struct net *net, enum nf_ct_ecache_state state)
+ {
+@@ -311,7 +330,8 @@
+ 			break;
+ 		return true;
+ 	case 2: /* autodetect: no event listener, don't allocate extension. */
+-		if (!READ_ONCE(nf_ctnetlink_has_listener))
++		if (!READ_ONCE(nf_ctnetlink_has_listener) &&
++		    !rcu_access_pointer(net->ct.nf_conntrack_event_chain.head))
+ 			return true;
+ 		fallthrough;
+ 	case 1:
+@@ -343,6 +363,7 @@
+ {
+ 	struct nf_conntrack_net *cnet = nf_ct_pernet(net);
+ 
++	ATOMIC_INIT_NOTIFIER_HEAD(&net->ct.nf_conntrack_event_chain);
+ 	net->ct.sysctl_events = nf_ct_events;
+ 
+ 	INIT_DELAYED_WORK(&cnet->ecache.dwork, ecache_work);

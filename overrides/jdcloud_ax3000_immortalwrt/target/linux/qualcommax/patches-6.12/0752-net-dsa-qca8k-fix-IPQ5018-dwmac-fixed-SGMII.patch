@@ -1,0 +1,75 @@
+Subject: [PATCH] net: dsa: qca8k: configure fixed SGMII for IPQ5018 DWMAC
+
+Use the working Linux 6.18.55 QCA8337 out-of-band SerDes setup for an
+IPQ5018 DWMAC CPU conduit. Live validation on AX3000 restores CPU-port
+reception and LAN DHCP. Preserve the legacy NSS-DP auto-negotiation
+workaround from 0751 for existing boards and conduits.
+
+--- a/drivers/net/dsa/qca/qca8k-8xxx.c
++++ b/drivers/net/dsa/qca/qca8k-8xxx.c
+@@ -1522,8 +1522,10 @@
+ 			    bool permit_pause_to_mac)
+ {
+ 	struct qca8k_priv *priv = pcs_to_qca8k_pcs(pcs)->priv;
++	struct dsa_port *cpu_dp;
++	bool dwmac_cpu;
+ 	int cpu_port_index, ret, port;
+-	u32 reg, val;
++	u32 mask, reg, val;
+ 
+ 	port = pcs_to_qca8k_pcs(pcs)->port;
+ 	switch (port) {
+@@ -1542,10 +1544,16 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	/* Enable SerDes auto-negotiation always.
+-	 * So fixed-link can work.
++	/* Keep the legacy NSS-DP auto-negotiation workaround. DWMAC's
++	 * fixed-link UNIPHY peer needs the upstream out-of-band setup.
+ 	 */
+-	ret = qca8k_rmw(priv, QCA8K_REG_PWS, QCA8K_PWS_SERDES_AEN_DIS, 0);
++	cpu_dp = dsa_to_port(priv->ds, port);
++	dwmac_cpu = dsa_is_cpu_port(priv->ds, port) && cpu_dp->conduit &&
++		of_device_is_compatible(dev_of_node(cpu_dp->conduit->dev.parent),
++				        "qcom,ipq5018-gmac");
++	val = dwmac_cpu && neg_mode != PHYLINK_PCS_NEG_INBAND_ENABLED ?
++		QCA8K_PWS_SERDES_AEN_DIS : 0;
++	ret = qca8k_rmw(priv, QCA8K_REG_PWS, QCA8K_PWS_SERDES_AEN_DIS, val);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -1595,11 +1603,18 @@
+ 	if (priv->ports_config.sgmii_tx_clk_falling_edge)
+ 		val |= QCA8K_PORT0_PAD_SGMII_TXCLK_FALLING_EDGE;
+ 
+-	if (val)
+-		ret = qca8k_rmw(priv, reg,
+-				QCA8K_PORT0_PAD_SGMII_RXCLK_FALLING_EDGE |
+-				QCA8K_PORT0_PAD_SGMII_TXCLK_FALLING_EDGE,
+-				val);
++	mask = (val) ? (QCA8K_PORT0_PAD_SGMII_RXCLK_FALLING_EDGE |
++			QCA8K_PORT0_PAD_SGMII_TXCLK_FALLING_EDGE) : 0;
++
++	/* The QCA8337 force bit lives in PAD0 for both SGMII ports. */
++	if (dwmac_cpu && priv->switch_id == QCA8K_ID_QCA8337) {
++		if (neg_mode == PHYLINK_PCS_NEG_OUTBAND)
++			val |= QCA8K_PORT_PAD_SGMII_FORCE_MODE;
++		mask |= QCA8K_PORT_PAD_SGMII_FORCE_MODE;
++	}
++
++	if (mask)
++		ret = qca8k_rmw(priv, reg, mask, val);
+ 
+ 	return 0;
+ }
+--- a/drivers/net/dsa/qca/qca8k.h
++++ b/drivers/net/dsa/qca/qca8k.h
+@@ -44,6 +44,7 @@
+ #define   QCA8K_MASK_CTRL_REV_ID(x)			FIELD_GET(QCA8K_MASK_CTRL_REV_ID_MASK, x)
+ #define   QCA8K_MASK_CTRL_DEVICE_ID_MASK		GENMASK(15, 8)
+ #define   QCA8K_MASK_CTRL_DEVICE_ID(x)			FIELD_GET(QCA8K_MASK_CTRL_DEVICE_ID_MASK, x)
++#define QCA8K_PORT_PAD_SGMII_FORCE_MODE		BIT(3)
+ #define QCA8K_REG_PORT0_PAD_CTRL			0x004
+ #define   QCA8K_PORT0_PAD_MAC06_EXCHANGE_EN		BIT(31)
+ #define   QCA8K_PORT0_PAD_SGMII_RXCLK_FALLING_EDGE	BIT(19)

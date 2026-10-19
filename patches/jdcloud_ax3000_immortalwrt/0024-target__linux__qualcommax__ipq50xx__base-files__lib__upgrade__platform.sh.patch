@@ -1,0 +1,34 @@
+diff --git a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
+index 7fe9728579..792525c2ac 100644
+--- a/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
++++ b/target/linux/qualcommax/ipq50xx/base-files/lib/upgrade/platform.sh
+@@ -199,6 +199,17 @@ platform_do_upgrade() {
+ 	glinet,gl-b3000)
+ 		glinet_do_upgrade "$1"
+ 		;;
++	jdcloud,ax3000)
++		CI_KERNPART="0:HLOS"
++		CI_ROOTPART="rootfs"
++		CI_DATAPART="rootfs_data"
++		emmc_do_upgrade "$1"
++		CI_KERNPART="0:HLOS_1"
++		CI_ROOTPART="rootfs_1"
++		# Resolve the second slot instead of reusing the first slot's devices.
++		unset EMMC_KERN_DEV EMMC_ROOT_DEV
++		emmc_do_upgrade "$1"
++		;;
+ 	linksys,mr5500|\
+ 	linksys,mx2000|\
+ 	linksys,mx5500|\
+@@ -244,3 +255,11 @@ platform_do_upgrade() {
+ 		;;
+ 	esac
+ }
++
++platform_copy_config() {
++	case "$(board_name)" in
++	jdcloud,ax3000)
++		emmc_copy_config
++		;;
++	esac
++}
